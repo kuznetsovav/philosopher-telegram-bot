@@ -56,6 +56,14 @@ TEXTS: dict[str, dict[str, str]] = {
         "en": "Who do you want to respond?",
         "ru": "Кто ответит?",
     },
+    "ask_philosophy_approach": {
+        "en": "How do you want to approach this?",
+        "ru": "Как ты хочешь на это посмотреть?",
+    },
+    "choose_philosopher_in_category": {
+        "en": "Who should speak?",
+        "ru": "Кто должен заговорить?",
+    },
     "pick_philosopher": {
         "en": "Pick a philosopher from the buttons below.",
         "ru": "Выбери философа из кнопок ниже.",
@@ -219,6 +227,66 @@ PHILOSOPHER_INFO: dict[str, dict[str, str]] = {
         "ru": (
             "Альбер Камю (1913–1960, Франция)\n"
             "Философ абсурда. У жизни нет смысла — и это нормально."
+        ),
+    },
+    "kierkegaard": {
+        "en": (
+            "Søren Kierkegaard (1813–1855, Denmark)\n"
+            "Existential thinker of anxiety, faith, and the leap beyond mere talk."
+        ),
+        "ru": (
+            "Сёрён Кьеркегор (1813–1855, Дания)\n"
+            "Мыслитель тревоги, веры и прыжка — не пустых слов."
+        ),
+    },
+    "marcus": {
+        "en": (
+            "Marcus Aurelius (121–180, Rome)\n"
+            "Stoic emperor: judgment, duty, and shrinking the drama."
+        ),
+        "ru": (
+            "Марк Аврелий (121–180, Рим)\n"
+            "Стоический император: суждение, долг и меньше драмы."
+        ),
+    },
+    "epictetus": {
+        "en": (
+            "Epictetus (~50–135, Greece)\n"
+            "Stoic teacher: control what is yours; stop demanding the world obey."
+        ),
+        "ru": (
+            "Эпиктет (~50–135, Греция)\n"
+            "Стоический учитель: владей своим; не требуй от мира покорности."
+        ),
+    },
+    "seneca": {
+        "en": (
+            "Seneca (~4 BCE–65 CE, Rome)\n"
+            "Stoic senator: time, anger, and practicing under pressure."
+        ),
+        "ru": (
+            "Сенека (~4 до н.э.–65 н.э., Рим)\n"
+            "Стоический сенатор: время, гнев и практика под давлением."
+        ),
+    },
+    "buddha": {
+        "en": (
+            "The Buddha (~5th c. BCE, India)\n"
+            "Maps craving, suffering, and seeing clearly — without easy comfort."
+        ),
+        "ru": (
+            "Будда (~V в. до н.э., Индия)\n"
+            "Показывает жажду, страдание и ясность — без дешёвого утешения."
+        ),
+    },
+    "william_james": {
+        "en": (
+            "William James (1842–1910, USA)\n"
+            "Pragmatist: truth in experience, choices that cash out in life."
+        ),
+        "ru": (
+            "Уильям Джеймс (1842–1910, США)\n"
+            "Прагматист: истина в опыте, выборы, которые меняют жизнь."
         ),
     },
 }
@@ -388,6 +456,225 @@ UNCERTAINTY_RESPONSES: dict[str, dict[str, list[str]]] = {
     },
 }
 
+_STOIC_UNCERTAINTY_EN = [
+    (
+        "Not knowing is a story about what you refuse to judge. "
+        "What part of this situation are you pretending is outside your power to name?"
+    ),
+    (
+        '"I don\'t know" often means "I don\'t want the cost of choosing." '
+        "Which small duty are you dodging by staying vague?"
+    ),
+    (
+        "The world is indifferent; your opinion is yours to own. "
+        "What interpretation of events are you renting from panic instead of selecting on purpose?"
+    ),
+    (
+        "Confusion is sometimes appetite for more data you do not need. "
+        "What action today would make the next step obvious even if fear stays?"
+    ),
+    (
+        "You cannot steer another person's will — only your response. "
+        "What are you demanding that violates that line, and what would you do if you stopped?"
+    ),
+    (
+        "Silence can be discipline or cowardice. Which is it here — "
+        "and what would change if you spoke one plain sentence about what you actually want?"
+    ),
+]
+_STOIC_UNCERTAINTY_RU = [
+    (
+        "«Не знаю» — часто история о том, что ты не хочешь судить. "
+        "Какую часть ситуации ты притворяешься, что не в твоей власти назвать?"
+    ),
+    (
+        "«Не знаю» часто значит «не хочу цены выбора». "
+        "Какой маленький долг ты избегаешь, оставаясь в тумане?"
+    ),
+    (
+        "Мир равнодушен; твоё мнение — твоё. "
+        "Какую интерпретацию событий ты арендуешь у паники вместо того чтобы выбрать её сам?"
+    ),
+    (
+        "Путаница иногда — жажда лишних данных. "
+        "Какое действие сегодня сделало бы следующий шаг ясным, даже если страх останется?"
+    ),
+    (
+        "Чужую волю не повернуть — только свой ответ. "
+        "Чего ты требуешь, что бьётся об эту границу, и что сделаешь, если перестанешь?"
+    ),
+    (
+        "Молчание может быть дисциплиной или трусостью. Что здесь — "
+        "и что изменится, если ты произнесёшь одно простое предложение о том, чего хочешь на самом деле?"
+    ),
+]
+for _slug in ("marcus", "epictetus", "seneca"):
+    UNCERTAINTY_RESPONSES[_slug] = {
+        "en": list(_STOIC_UNCERTAINTY_EN),
+        "ru": list(_STOIC_UNCERTAINTY_RU),
+    }
+
+UNCERTAINTY_RESPONSES["kierkegaard"] = {
+    "en": [
+        (
+            "Anxiety feeds on the unnamed. You are not waiting for information — you are postponing commitment. "
+            "What leap have you been circling without calling it a choice?"
+        ),
+        (
+            '"I don\'t know" can be the aesthetic dodge of infinite reflection. '
+            "Cut it: what would you lose if you stopped researching and acted tomorrow?"
+        ),
+        (
+            "The absurd here is not the world — it is your double life between possibility and refusal. "
+            "Which self are you performing so you never have to be one person?"
+        ),
+        (
+            "Faith — for you — is not comfort; it is venturing where proof ends. "
+            "What risk are you branding as confusion so you never have to own it?"
+        ),
+        (
+            "Despair is also a stance. Name the version of yourself you are protecting by staying suspended."
+        ),
+        (
+            "Silence before God or fate is still a decision. What are you granting veto power "
+            "by pretending the answer has not arrived?"
+        ),
+    ],
+    "ru": [
+        (
+            "Тревога питается неназванным. Ты ждёшь не информации — ты откладываешь обязательство. "
+            "О каком прыжке ты ходишь кругами, не называя его выбором?"
+        ),
+        (
+            "«Не знаю» может быть эстетическим уходом в бесконечное размышление. "
+            "Режь: что ты потеряешь, если завтра перестанешь «изучать» и сделаешь шаг?"
+        ),
+        (
+            "Абсурд здесь не в мире — в твоей двойной жизни между возможностью и отказом. "
+            "Какую роль ты играешь, чтобы не быть одним человеком?"
+        ),
+        (
+            "Вера — для тебя — не утешение, а шаг туда, где кончаются доказательства. "
+            "Какой риск ты называешь сомнением, чтобы не признать его своим?"
+        ),
+        (
+            "Отчаяние — тоже позиция. Назови версию себя, которую защищаешь, зависая в подвешенном состоянии."
+        ),
+        (
+            "Молчание перед судьбой — всё равно решение. Кому ты даёшь право вето, "
+            "притворяясь, что ответ ещё не пришёл?"
+        ),
+    ],
+}
+UNCERTAINTY_RESPONSES["buddha"] = {
+    "en": [
+        (
+            "Not knowing, repeated, is often clinging to a story that hurts. "
+            "What craving is this confusion buying you — comfort, identity, avoidance?"
+        ),
+        (
+            '"I don\'t know" can be a shield against seeing cause and effect. '
+            "What habit restarted the same suffering this week?"
+        ),
+        (
+            "The mind loves fog when clear sight imposes restraint. "
+            "What would you have to stop doing if you admitted you already see the chain?"
+        ),
+        (
+            "Suffering plus resistance becomes drama. Where are you adding the second arrow "
+            "by refusing to name what is actually happening?"
+        ),
+        (
+            "Clarity is not cruelty. One breath, one fact: what is the simplest true sentence "
+            "you are refusing to say about your situation?"
+        ),
+        (
+            "Liberation starts with honest attention. What are you turning away from "
+            "the moment you say you cannot know?"
+        ),
+    ],
+    "ru": [
+        (
+            "Повторяемое «не знаю» часто — цепляние за историю, которая ранит. "
+            "Какую жажду кормит эта путаница — покой, образ себя, избегание?"
+        ),
+        (
+            "«Не знаю» может быть щитом от причинности. "
+            "Какая привычка снова запустила то же страдание на этой неделе?"
+        ),
+        (
+            "Уму нравится туман, когда ясность требует сдержанности. "
+            "Что ты перестал бы делать, если признал, что уже видишь цепочку?"
+        ),
+        (
+            "Страдание плюс сопротивление — драма. Где ты добавляешь вторую стрелу, "
+            "отказываясь назвать, что происходит на самом деле?"
+        ),
+        (
+            "Ясность — не жестокость. Одно дыхание, один факт: какое простое правдивое предложение "
+            "ты не хочешь сказать о своей ситуации?"
+        ),
+        (
+            "Освобождение начинается с честного внимания. От чего ты отворачиваешься "
+            "в тот момент, когда говоришь, что не можешь знать?"
+        ),
+    ],
+}
+UNCERTAINTY_RESPONSES["william_james"] = {
+    "en": [
+        (
+            "Ideas are cheap until they cash out in conduct. "
+            "What difference would it make tomorrow if you believed one sharp answer instead of 'I don't know'?"
+        ),
+        (
+            '"I don\'t know" is sometimes a way to avoid betting. '
+            "What hypothesis about your life are you refusing to test in action?"
+        ),
+        (
+            "Not deciding is experimenting with paralysis. Run the thought experiment: "
+            "if you acted as if you knew for one week, what would you do first?"
+        ),
+        (
+            "Truth happens in the living. Which trail of consequences are you ignoring "
+            "while you wait for a feeling of certainty?"
+        ),
+        (
+            "Stream of thought: notice the edits. What detail did your story drop "
+            "so the problem could stay abstract?"
+        ),
+        (
+            "Pragmatic cut: what works badly in your current story, and what working belief "
+            "would force you to change behavior today?"
+        ),
+    ],
+    "ru": [
+        (
+            "Идеи дешевы, пока не обналичиваются в поступках. "
+            "Какая разница завтра, если ты поверишь одному острому ответу вместо «не знаю»?"
+        ),
+        (
+            "«Не знаю» иногда — способ не делать ставку. "
+            "Какую гипотезу о своей жизни ты не хочешь проверить действием?"
+        ),
+        (
+            "Не решать — значит экспериментировать с оцепенением. Мысленный эксперимент: "
+            "если бы ты действовал так, будто знаешь, одну неделю — что сделал бы первым?"
+        ),
+        (
+            "Истина случается в живом. Какую цепочку последствий ты игнорируешь, "
+            "ждая чувства уверенности?"
+        ),
+        (
+            "Поток мысли: заметь правки. Какую деталь твоя история выбросила, "
+            "чтобы проблема осталась абстрактной?"
+        ),
+        (
+            "Прагматичный срез: что плохо работает в твоей текущей истории и какое «рабочее» убеждение "
+            "заставило бы тебя сегодня сменить поведение?"
+        ),
+    ],
+}
+
 CONFUSION_RESPONSES: dict[str, dict[str, list[str]]] = {
     "nietzsche": {
         "en": [
@@ -475,9 +762,87 @@ CONFUSION_RESPONSES: dict[str, dict[str, list[str]]] = {
     },
 }
 
+_STOIC_CONFUSION_EN = [
+    "Let's simplify. What part feels unclear — the facts, or what you should do next?",
+    "Plain words: what are you afraid would happen if you chose one small next step?",
+    "Two buckets — what you control and what you don't. Which bucket is the mess in?",
+    "No Stoic lecture. One sentence: what happened, without the story you added?",
+]
+_STOIC_CONFUSION_RU = [
+    "Давай проще. Что неясно — факты или что делать дальше?",
+    "Простыми словами: чего ты боишься, если выберешь один маленький следующий шаг?",
+    "Две корзины — твоё и не твоё. В какой корзине каша?",
+    "Без лекции. Одно предложение: что случилось, без истории, которую ты добавил?",
+]
+for _slug in ("marcus", "epictetus", "seneca"):
+    CONFUSION_RESPONSES[_slug] = {
+        "en": list(_STOIC_CONFUSION_EN),
+        "ru": list(_STOIC_CONFUSION_RU),
+    }
+
+CONFUSION_RESPONSES["kierkegaard"] = {
+    "en": [
+        "Let's simplify. Are you confused about the situation, or about what you're willing to become?",
+        "Different angle: what decision feels like it would cost you your self-image?",
+        "One thread only: what are you repeating so the question stays mystical?",
+        "Plain speech: what would honesty force you to do this week?",
+    ],
+    "ru": [
+        "Давай проще. Ты не понимаешь ситуацию или не понимаешь, кем готов стать?",
+        "Под другим углом: какое решение кажется, что отнимет образ себя?",
+        "Одна нить: что ты повторяешь, чтобы вопрос оставался «мистическим»?",
+        "Простыми словами: что заставила бы тебя сделать честность на этой неделе?",
+    ],
+}
+CONFUSION_RESPONSES["buddha"] = {
+    "en": [
+        "Let's simplify. What sensation or thought keeps looping when you say you don't understand?",
+        "Softer: what are you holding onto that makes the story hard to parse?",
+        "One breath: name one fact, then one reaction — where is the extra suffering?",
+        "No doctrine. What would change if you watched the urge instead of obeying it?",
+    ],
+    "ru": [
+        "Давай проще. Какое ощущение или мысль крутится, когда ты говоришь «не понимаю»?",
+        "Мягче: за что ты держишься, из-за чего историю трудно разобрать?",
+        "Одно дыхание: один факт, потом одна реакция — где лишнее страдание?",
+        "Без учения. Что изменится, если смотреть на импульс, а не подчиняться ему?",
+    ],
+}
+CONFUSION_RESPONSES["william_james"] = {
+    "en": [
+        "Let's simplify. What outcome are you trying to avoid naming?",
+        "Pragmatic cut: what would you try for a week if confusion were expensive?",
+        "Different question: what evidence do you already have but won't weigh?",
+        "Plain: what habit explains the muddle better than any abstract puzzle?",
+    ],
+    "ru": [
+        "Давай проще. Какой исход ты избегаешь назвать?",
+        "Прагматично: что бы ты пробовал неделю, если путаница стоила бы дорого?",
+        "Другой вопрос: какие свидетельства у тебя уже есть, но ты их не взвешиваешь?",
+        "Просто: какая привычка лучше объясняет кашу, чем любая абстрактная загадка?",
+    ],
+}
+
+
+_DISPLAY_TO_SLUG: dict[str, str] = {
+    "nietzsche": "nietzsche",
+    "camus": "camus",
+    "sartre": "sartre",
+    "kierkegaard": "kierkegaard",
+    "marcus aurelius": "marcus",
+    "epictetus": "epictetus",
+    "seneca": "seneca",
+    "the buddha": "buddha",
+    "william james": "william_james",
+}
+
+
+def _philosopher_slug(display_name: str) -> str:
+    return _DISPLAY_TO_SLUG.get(display_name.lower().strip(), display_name.lower().replace(" ", "_"))
+
 
 def pick_confusion_response(philosopher_name: str, lang: str, state: dict) -> str:
-    key = philosopher_name.lower()
+    key = _philosopher_slug(philosopher_name)
     row = CONFUSION_RESPONSES.get(key) or CONFUSION_RESPONSES["camus"]
     lg = lang if lang in ("en", "ru") else "en"
     variants = row.get(lg) or row["en"]
@@ -489,7 +854,7 @@ def pick_confusion_response(philosopher_name: str, lang: str, state: dict) -> st
 
 
 def pick_uncertainty_response(philosopher_name: str, lang: str, state: dict) -> str:
-    key = philosopher_name.lower()
+    key = _philosopher_slug(philosopher_name)
     row = UNCERTAINTY_RESPONSES.get(key) or UNCERTAINTY_RESPONSES["nietzsche"]
     lg = lang if lang in ("en", "ru") else "en"
     variants = row.get(lg) or row["en"]
@@ -501,7 +866,7 @@ def pick_uncertainty_response(philosopher_name: str, lang: str, state: dict) -> 
 
 
 def philosopher_intro(philosopher_name: str, lang: str) -> Optional[str]:
-    key = philosopher_name.lower()
+    key = _philosopher_slug(philosopher_name)
     row = PHILOSOPHER_INFO.get(key)
     if not row:
         return None
