@@ -615,6 +615,30 @@ async def text_handler(message: Message) -> None:
             await message.answer(t("notif_invalid_time", lang))
         return
 
+    # ── catch-all for notification steps (prevents silent freeze) ──
+    _NOTIF_STEPS = {
+        "notif_enabling": lambda l: _notif_enable_keyboard(l),
+        "notif_choosing_days": lambda l: _notif_days_keyboard(l),
+        "notif_choosing_tz": lambda l: _tz_keyboard(),
+        "notif_choosing_time": lambda l: _notif_time_keyboard(l),
+        "notif_managing": lambda l: _notif_manage_keyboard(l),
+    }
+    if state and state.get("step") in _NOTIF_STEPS:
+        kb_fn = _NOTIF_STEPS[state["step"]]
+        log.warning(
+            "[user:%d] unmatched input %r at step %s",
+            uid, text, state["step"],
+        )
+        await message.answer(
+            t("notif_ask_enable", lang) if state["step"] == "notif_enabling"
+            else t("notif_ask_days", lang) if state["step"] == "notif_choosing_days"
+            else t("notif_ask_tz", lang) if state["step"] == "notif_choosing_tz"
+            else t("notif_ask_time", lang) if state["step"] == "notif_choosing_time"
+            else t("notif_ask_enable", lang),
+            reply_markup=kb_fn(lang),
+        )
+        return
+
     # ── awaiting problem ──
     if not state or state["step"] == "awaiting_problem":
         lang = state["language"] if state else _detect_language(message.from_user.language_code)
