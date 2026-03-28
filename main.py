@@ -5,7 +5,7 @@ import logging
 import re
 import sys
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from os import getenv
 from time import time
 
@@ -146,6 +146,29 @@ def _notif_manage_keyboard(lang: str) -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True, one_time_keyboard=True)
 
 
+UTC_OFFSETS = [
+    ("UTC-8", -8), ("UTC-5", -5), ("UTC+0", 0),
+    ("UTC+1", 1), ("UTC+2", 2), ("UTC+3", 3),
+    ("UTC+4", 4), ("UTC+5", 5), ("UTC+8", 8),
+    ("UTC+9", 9), ("UTC+10", 10),
+]
+UTC_OFFSET_MAP = {label: offset for label, offset in UTC_OFFSETS}
+
+
+def _tz_keyboard() -> ReplyKeyboardMarkup:
+    rows = []
+    for i in range(0, len(UTC_OFFSETS), 3):
+        chunk = UTC_OFFSETS[i:i + 3]
+        rows.append([KeyboardButton(text=label) for label, _ in chunk])
+    return ReplyKeyboardMarkup(keyboard=rows, resize_keyboard=True, one_time_keyboard=True)
+
+
+def _tz_label(offset: int) -> str:
+    if offset >= 0:
+        return f"UTC+{offset}"
+    return f"UTC{offset}"
+
+
 NOTIF_BTN_KEYS = (
     "notif_btn_enable", "notif_btn_cancel",
     "notif_btn_weekdays", "notif_btn_weekends", "notif_btn_every_day",
@@ -266,7 +289,7 @@ async def _send_typing_and_reply(message: Message, state: dict, bot: Bot) -> Non
 
 _PREF_KEYS = (
     "notifications_enabled", "notification_days",
-    "notification_time", "last_notification_sent",
+    "notification_time", "utc_offset", "last_notification_sent",
 )
 
 
@@ -356,7 +379,8 @@ async def notifications_command_handler(message: Message) -> None:
     if state.get("notifications_enabled"):
         days = state.get("notification_days", [])
         ntime = state.get("notification_time", "—")
-        status = t("notif_status", lang, days=_days_label(days, lang), time=ntime)
+        tz = _tz_label(state.get("utc_offset", 0))
+        status = t("notif_status", lang, days=_days_label(days, lang), time=ntime, tz=tz)
         state["step"] = "notif_managing"
         await message.answer(status, reply_markup=_notif_manage_keyboard(lang))
     else:
@@ -477,8 +501,8 @@ async def text_handler(message: Message) -> None:
                 "notif_btn_every_day": ALL_DAYS,
             }
             state["notification_days"] = list(day_map[notif_btn])
-            state["step"] = "notif_choosing_time"
-            await message.answer(t("notif_ask_time", lang), reply_markup=_notif_time_keyboard(lang))
+            state["step"] = "notif_choosing_tz"
+            await message.answer(t("notif_ask_tz", lang), reply_markup=_tz_keyboard())
             return
         if notif_btn == "notif_btn_custom":
             state["step"] = "notif_custom_time"
@@ -501,27 +525,38 @@ async def text_handler(message: Message) -> None:
             await message.answer(t("notif_ask_time", lang), reply_markup=_notif_time_keyboard(lang))
             return
 
+    # ── timezone selection ──
+    if state and state.get("step") == "notif_choosing_tz" and text in UTC_OFFSET_MAP:
+        state["utc_offset"] = UTC_OFFSET_MAP[text]
+        state["step"] = "notif_choosing_time"
+        await message.answer(t("notif_ask_time", lang), reply_markup=_notif_time_keyboard(lang))
+        return
+
+    # ── preset time selection ──
     if state and state.get("step") == "notif_choosing_time" and text in PRESET_TIMES:
         state["notification_time"] = text
         state["notifications_enabled"] = True
         days = state.get("notification_days", [])
+        tz = _tz_label(state.get("utc_offset", 0))
         state["step"] = "conversation" if state.get("philosopher") else "awaiting_problem"
-        log.info("[user:%d] notifications ON (%s, %s)", uid, _days_label(days, lang), text)
+        log.info("[user:%d] notifications ON (%s, %s, %s)", uid, _days_label(days, lang), text, tz)
         await message.answer(
-            t("notif_confirmed", lang, days=_days_label(days, lang), time=text),
+            t("notif_confirmed", lang, days=_days_label(days, lang), time=text, tz=tz),
             reply_markup=ReplyKeyboardRemove(),
         )
         return
 
+    # ── custom time input ──
     if state and state.get("step") == "notif_custom_time":
         if TIME_RE.match(text):
             state["notification_time"] = text
             state["notifications_enabled"] = True
             days = state.get("notification_days", [])
+            tz = _tz_label(state.get("utc_offset", 0))
             state["step"] = "conversation" if state.get("philosopher") else "awaiting_problem"
-            log.info("[user:%d] notifications ON (%s, %s)", uid, _days_label(days, lang), text)
+            log.info("[user:%d] notifications ON (%s, %s, %s)", uid, _days_label(days, lang), text, tz)
             await message.answer(
-                t("notif_confirmed", lang, days=_days_label(days, lang), time=text),
+                t("notif_confirmed", lang, days=_days_label(days, lang), time=text, tz=tz),
                 reply_markup=ReplyKeyboardRemove(),
             )
         else:
@@ -541,6 +576,7 @@ async def text_handler(message: Message) -> None:
                 "step": "awaiting_clarification",
                 "language": lang,
                 "session": state["session"] if state else _new_session(),
+                **_carry_prefs(state),
             }
             _mark_user_activity(user_state[uid])
             log.info("[user:%d] SELECTED_OPTION: %s", uid, text)
@@ -560,6 +596,7 @@ async def text_handler(message: Message) -> None:
             "problem": message.text,
             "language": lang,
             "session": state["session"] if state else _new_session(),
+            **_carry_prefs(state),
         }
         state = user_state[uid]
         _mark_user_activity(state)
@@ -648,7 +685,7 @@ def _current_day_abbr(now: datetime) -> str:
     return _WEEKDAY_ABBR[now.weekday()]
 
 
-def should_send_notification(state: dict, now: datetime) -> bool:
+def should_send_notification(state: dict, now_utc: datetime) -> bool:
     if not state.get("notifications_enabled"):
         return False
     days = state.get("notification_days")
@@ -656,19 +693,22 @@ def should_send_notification(state: dict, now: datetime) -> bool:
     if not days or not ntime:
         return False
 
-    if _current_day_abbr(now) not in days:
+    offset_hours = state.get("utc_offset", 0)
+    local_now = now_utc + timedelta(hours=offset_hours)
+
+    if _current_day_abbr(local_now) not in days:
         return False
 
     m = TIME_RE.match(ntime)
     if not m:
         return False
     target_min = int(m.group(1)) * 60 + int(m.group(2))
-    current_min = now.hour * 60 + now.minute
+    current_min = local_now.hour * 60 + local_now.minute
     if abs(current_min - target_min) > NOTIF_TIME_WINDOW:
         return False
 
     last_sent = state.get("last_notification_sent")
-    if last_sent and last_sent.date() == now.date():
+    if last_sent and last_sent.date() == local_now.date():
         return False
 
     return True
@@ -681,13 +721,13 @@ def get_notification_text(state: dict) -> str:
 async def _notification_loop(bot: Bot) -> None:
     while True:
         await asyncio.sleep(REMINDER_CHECK_INTERVAL)
-        now = datetime.now(timezone.utc)
+        now_utc = datetime.now(timezone.utc)
         for uid, state in list(user_state.items()):
-            if not should_send_notification(state, now):
+            if not should_send_notification(state, now_utc):
                 continue
             try:
                 await bot.send_message(uid, get_notification_text(state))
-                state["last_notification_sent"] = now
+                state["last_notification_sent"] = now_utc
                 log.info("Daily notification sent to user %d", uid)
             except Exception:
                 log.exception("Failed to send notification to user %d", uid)

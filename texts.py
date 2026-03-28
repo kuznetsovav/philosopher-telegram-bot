@@ -109,9 +109,13 @@ TEXTS: dict[str, dict[str, str]] = {
         "en": "Every day",
         "ru": "Каждый день",
     },
+    "notif_ask_tz": {
+        "en": "What's your timezone?",
+        "ru": "Какой у тебя часовой пояс?",
+    },
     "notif_ask_time": {
-        "en": "Choose time:",
-        "ru": "Выбери время:",
+        "en": "Choose time (your local time):",
+        "ru": "Выбери время (по твоему местному времени):",
     },
     "notif_btn_custom": {
         "en": "Custom",
@@ -138,8 +142,8 @@ TEXTS: dict[str, dict[str, str]] = {
         "ru": "Изменить дни",
     },
     "notif_confirmed": {
-        "en": "Notifications set: {days} at {time} ✓",
-        "ru": "Уведомления настроены: {days}, {time} ✓",
+        "en": "Notifications set: {days} at {time} ({tz}) ✓",
+        "ru": "Уведомления настроены: {days}, {time} ({tz}) ✓",
     },
     "notif_disabled": {
         "en": "Notifications disabled",
@@ -150,8 +154,8 @@ TEXTS: dict[str, dict[str, str]] = {
         "ru": "Хорошо, без уведомлений.",
     },
     "notif_status": {
-        "en": "Notifications are ON\nDays: {days}\nTime: {time}",
-        "ru": "Уведомления включены\nДни: {days}\nВремя: {time}",
+        "en": "Notifications are ON\nDays: {days}\nTime: {time} ({tz})",
+        "ru": "Уведомления включены\nДни: {days}\nВремя: {time} ({tz})",
     },
     "notif_daily": {
         "en": "What is bothering you right now?",
