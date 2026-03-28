@@ -173,6 +173,14 @@ TEXTS: dict[str, dict[str, str]] = {
         "en": "every day",
         "ru": "каждый день",
     },
+    "rate_limit": {
+        "en": "Slow down.",
+        "ru": "Не так быстро.",
+    },
+    "daily_limit": {
+        "en": "You've reached today's limit. Come back tomorrow.",
+        "ru": "Ты достиг лимита на сегодня. Продолжим завтра.",
+    },
 }
 
 

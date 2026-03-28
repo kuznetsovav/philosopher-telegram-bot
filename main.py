@@ -60,6 +60,9 @@ REMINDER_CHECK_INTERVAL = 3600
 NOTIFICATION_CHECK_INTERVAL = 300
 INACTIVE_THRESHOLD = 86400
 
+FREE_DAILY_LIMIT = 20
+MIN_INTERVAL_SECONDS = 2
+
 # ── keyboards ──────────────────────────────────────────────────────────
 
 def _problem_keyboard(lang: str) -> ReplyKeyboardMarkup:
@@ -269,10 +272,70 @@ def _append_history(state: dict, role: str, content: str) -> None:
     state["history"] = state["history"][-(MAX_HISTORY * 2):]
 
 
+_USAGE_KEYS = ("daily_requests", "last_request_time", "last_reset_date")
+
+
+def _default_usage() -> dict:
+    return {
+        "daily_requests": 0,
+        "last_request_time": None,
+        "last_reset_date": None,
+    }
+
+
+def _ensure_usage_fields(state: dict) -> None:
+    d = _default_usage()
+    for k, v in d.items():
+        state.setdefault(k, v)
+
+
+def reset_daily_usage(state: dict) -> None:
+    _ensure_usage_fields(state)
+    today = datetime.now(timezone.utc).date()
+    last = state.get("last_reset_date")
+    if last != today:
+        state["daily_requests"] = 0
+        state["last_reset_date"] = today
+
+
+def is_rate_limited(state: dict) -> bool:
+    _ensure_usage_fields(state)
+    last = state.get("last_request_time")
+    if last is None:
+        return False
+    return (time() - last) < MIN_INTERVAL_SECONDS
+
+
+def is_daily_limit_reached(state: dict) -> bool:
+    _ensure_usage_fields(state)
+    return state["daily_requests"] >= FREE_DAILY_LIMIT
+
+
+def register_request(state: dict) -> None:
+    _ensure_usage_fields(state)
+    state["daily_requests"] = state["daily_requests"] + 1
+    state["last_request_time"] = time()
+
+
+async def _check_llm_limits(message: Message, state: dict, uid: int) -> bool:
+    reset_daily_usage(state)
+    lang = state.get("language", "en")
+    if is_rate_limited(state):
+        log.info("[user:%d] RATE_LIMIT", uid)
+        await message.answer(t("rate_limit", lang))
+        return False
+    if is_daily_limit_reached(state):
+        log.info("[user:%d] DAILY_LIMIT", uid)
+        await message.answer(t("daily_limit", lang))
+        return False
+    return True
+
+
 async def _send_typing_and_reply(message: Message, state: dict, bot: Bot) -> None:
     system_prompt = get_prompt(state["philosopher"], state.get("language", "en"))
     await bot.send_chat_action(message.chat.id, ChatAction.TYPING)
     reply = await ask_llm(system_prompt, state["history"])
+    register_request(state)
     await asyncio.sleep(THINKING_DELAY)
     _append_history(state, "assistant", reply)
     _mark_bot_reply(state)
@@ -329,6 +392,7 @@ def _load_notif_prefs() -> None:
                 "step": "awaiting_problem",
                 "language": prefs.get("language", "en"),
                 "session": _new_session(),
+                **_default_usage(),
             }
         last_str = prefs.pop("last_notification_sent", None)
         if last_str:
@@ -345,6 +409,16 @@ def _carry_prefs(prev: dict | None) -> dict:
     if not prev:
         return {}
     return {k: prev[k] for k in _PREF_KEYS if k in prev}
+
+
+def _carry_usage(prev: dict | None) -> dict:
+    if not prev:
+        return _default_usage()
+    out = _default_usage()
+    for k in _USAGE_KEYS:
+        if k in prev:
+            out[k] = prev[k]
+    return out
 
 
 @dp.message(CommandStart())
@@ -364,6 +438,7 @@ async def command_start_handler(message: Message) -> None:
         "language": lang,
         "session": _new_session(),
         **_carry_prefs(prev),
+        **_carry_usage(prev),
     }
     log.info("[user:%d] START (lang=%s, total_users=%d)", uid, lang, get_total_users())
     await message.answer(t("start", lang), reply_markup=_problem_keyboard(lang))
@@ -389,6 +464,7 @@ async def reset_command_handler(message: Message) -> None:
         "language": lang,
         "session": _new_session(),
         **_carry_prefs(prev),
+        **_carry_usage(prev),
     }
     log.info("[user:%d] RESET", uid)
     await message.answer(t("reset", lang), reply_markup=_problem_keyboard(lang))
@@ -420,6 +496,7 @@ async def notifications_command_handler(message: Message) -> None:
             "step": "awaiting_problem",
             "language": lang,
             "session": _new_session(),
+            **_default_usage(),
         }
         state = user_state[uid]
 
@@ -510,6 +587,7 @@ async def text_handler(message: Message) -> None:
                 "step": "awaiting_problem",
                 "language": lang,
                 "session": _new_session(),
+                **_default_usage(),
             }
         log.info("[user:%d] language changed to %s", uid, lang)
         await message.answer(t("language_set", lang), reply_markup=ReplyKeyboardRemove())
@@ -651,6 +729,7 @@ async def text_handler(message: Message) -> None:
                 "language": lang,
                 "session": state["session"] if state else _new_session(),
                 **_carry_prefs(state),
+                **_carry_usage(state),
             }
             _mark_user_activity(user_state[uid])
             log.info("[user:%d] SELECTED_OPTION: %s", uid, text)
@@ -671,6 +750,7 @@ async def text_handler(message: Message) -> None:
             "language": lang,
             "session": state["session"] if state else _new_session(),
             **_carry_prefs(state),
+            **_carry_usage(state),
         }
         state = user_state[uid]
         _mark_user_activity(state)
@@ -702,6 +782,9 @@ async def text_handler(message: Message) -> None:
             )
             return
 
+        if not await _check_llm_limits(message, state, uid):
+            return
+
         ANALYTICS["selected_philosopher"][philosopher.lower()] += 1
         log.info("[user:%d] SELECTED_PHILOSOPHER: %s", uid, philosopher)
 
@@ -717,6 +800,8 @@ async def text_handler(message: Message) -> None:
     # ── conversation ──
     if state["step"] == "conversation":
         _mark_user_activity(state)
+        if not await _check_llm_limits(message, state, uid):
+            return
         _append_history(state, "user", message.text)
         ANALYTICS["current_sessions"][uid] = ANALYTICS["current_sessions"].get(uid, 0) + 1
         log.info("[user:%d] message: %s", uid, message.text)
