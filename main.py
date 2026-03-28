@@ -310,11 +310,13 @@ def _save_notif_prefs() -> None:
             data[str(uid)] = entry
     try:
         _NOTIF_FILE.write_text(json.dumps(data, indent=2))
+        log.info("Saved notif prefs to %s (%d users)", _NOTIF_FILE, len(data))
     except Exception:
-        log.exception("Failed to save notification prefs")
+        log.exception("Failed to save notification prefs to %s", _NOTIF_FILE)
 
 
 def _load_notif_prefs() -> None:
+    log.info("Looking for notif prefs at %s (exists=%s)", _NOTIF_FILE, _NOTIF_FILE.exists())
     if not _NOTIF_FILE.exists():
         return
     try:
@@ -746,7 +748,9 @@ def should_send_notification(state: dict, now_utc: datetime) -> bool:
     offset_hours = state.get("utc_offset", 0)
     local_now = now_utc + timedelta(hours=offset_hours)
 
-    if _current_day_abbr(local_now) not in days:
+    local_day = _current_day_abbr(local_now)
+    if local_day not in days:
+        log.debug("Notif skip: day %s not in %s", local_day, days)
         return False
 
     m = TIME_RE.match(ntime)
@@ -756,12 +760,15 @@ def should_send_notification(state: dict, now_utc: datetime) -> bool:
     current_min = local_now.hour * 60 + local_now.minute
     diff = abs(current_min - target_min)
     if diff > NOTIF_TIME_WINDOW:
+        log.debug("Notif skip: time diff %d min (target %s, local %s)", diff, ntime, local_now.strftime("%H:%M"))
         return False
 
     last_sent = state.get("last_notification_sent")
     if last_sent and last_sent.date() == local_now.date():
+        log.debug("Notif skip: already sent today")
         return False
 
+    log.info("Notif match: target=%s, local=%s, diff=%d min", ntime, local_now.strftime("%H:%M"), diff)
     return True
 
 
@@ -770,24 +777,36 @@ def get_notification_text(state: dict) -> str:
 
 
 async def _notification_loop(bot: Bot) -> None:
+    log.info("Notification loop started")
     first_run = True
     while True:
-        if first_run:
-            await asyncio.sleep(10)
-            first_run = False
-        else:
-            await asyncio.sleep(NOTIFICATION_CHECK_INTERVAL)
-        now_utc = datetime.now(timezone.utc)
-        for uid, state in list(user_state.items()):
-            if not should_send_notification(state, now_utc):
-                continue
-            try:
-                await bot.send_message(uid, get_notification_text(state))
-                state["last_notification_sent"] = now_utc
-                _save_notif_prefs()
-                log.info("Daily notification sent to user %d", uid)
-            except Exception:
-                log.exception("Failed to send notification to user %d", uid)
+        try:
+            if first_run:
+                await asyncio.sleep(10)
+                first_run = False
+            else:
+                await asyncio.sleep(NOTIFICATION_CHECK_INTERVAL)
+            now_utc = datetime.now(timezone.utc)
+            enabled_users = [
+                uid for uid, s in user_state.items()
+                if s.get("notifications_enabled")
+            ]
+            log.info(
+                "Notif tick: utc=%s, users=%d, enabled=%s",
+                now_utc.strftime("%H:%M"), len(user_state), enabled_users,
+            )
+            for uid, state in list(user_state.items()):
+                if not should_send_notification(state, now_utc):
+                    continue
+                try:
+                    await bot.send_message(uid, get_notification_text(state))
+                    state["last_notification_sent"] = now_utc
+                    _save_notif_prefs()
+                    log.info("Daily notification sent to user %d", uid)
+                except Exception:
+                    log.exception("Failed to send notification to user %d", uid)
+        except Exception:
+            log.exception("Notification loop error")
 
 
 # ── bot commands menu ──────────────────────────────────────────────────
