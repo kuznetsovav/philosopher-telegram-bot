@@ -401,6 +401,21 @@ def register_request(state: dict) -> None:
     state["last_request_time"] = time()
 
 
+async def _handle_conversation_turn(message: Message, state: dict, uid: int) -> None:
+    """Continue dialogue with the current philosopher (same as conversation branch)."""
+    state.setdefault("history", [])
+    _mark_user_activity(state)
+    if not await _check_llm_limits(message, state, uid):
+        return
+    state.setdefault("conversation_phase", "challenge")
+    state.setdefault("closure_prompt_shown", False)
+    _update_conversation_phase(state, message.text)
+    _append_history(state, "user", message.text)
+    ANALYTICS["current_sessions"][uid] = ANALYTICS["current_sessions"].get(uid, 0) + 1
+    log.info("[user:%d] message: %s", uid, message.text)
+    await _send_typing_and_reply(message, state, message.bot)
+
+
 async def _check_llm_limits(message: Message, state: dict, uid: int) -> bool:
     reset_daily_usage(state)
     lang = state.get("language", "en")
@@ -842,6 +857,15 @@ async def text_handler(message: Message) -> None:
         )
         return
 
+    # ── repair stale step: never restart problem flow while a chat is active ──
+    if (
+        state
+        and state.get("step") == "awaiting_problem"
+        and state.get("philosopher")
+        and state.get("history")
+    ):
+        state["step"] = "conversation"
+
     # ── awaiting problem ──
     if not state or state["step"] == "awaiting_problem":
         lang = state["language"] if state else _detect_language(message.from_user.language_code)
@@ -903,6 +927,14 @@ async def text_handler(message: Message) -> None:
     if state["step"] == "awaiting_philosopher":
         philosopher = text
         if philosopher not in PHILOSOPHER_NAMES:
+            # /philosopher or menu left step on awaiting_philosopher but kept prior philosopher;
+            # confused/uncertain replies should continue the same dialogue, not re-prompt selection.
+            if state.get("philosopher") and (
+                is_confused_answer(text) or is_uncertain_answer(text)
+            ):
+                state["step"] = "conversation"
+                await _handle_conversation_turn(message, state, uid)
+                return
             await message.answer(
                 t("pick_philosopher", state.get("language", "en")),
                 reply_markup=_philosopher_keyboard(),
@@ -933,16 +965,7 @@ async def text_handler(message: Message) -> None:
 
     # ── conversation ──
     if state["step"] == "conversation":
-        _mark_user_activity(state)
-        if not await _check_llm_limits(message, state, uid):
-            return
-        state.setdefault("conversation_phase", "challenge")
-        state.setdefault("closure_prompt_shown", False)
-        _update_conversation_phase(state, message.text)
-        _append_history(state, "user", message.text)
-        ANALYTICS["current_sessions"][uid] = ANALYTICS["current_sessions"].get(uid, 0) + 1
-        log.info("[user:%d] message: %s", uid, message.text)
-        await _send_typing_and_reply(message, state, message.bot)
+        await _handle_conversation_turn(message, state, uid)
         return
 
 
