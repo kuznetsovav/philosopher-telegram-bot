@@ -1,7 +1,27 @@
 TEXTS: dict[str, dict[str, str]] = {
     "start": {
-        "en": "What is bothering you right now?\nYou can choose an option below or type your own.",
-        "ru": "Что тебя сейчас больше всего мучает?\nМожешь выбрать вариант ниже или написать свой.",
+        "en": (
+            "What is bothering you right now?\n"
+            "You can choose an option below or type your own.\n\n"
+            "<i>Tip: type / to see available commands</i>"
+        ),
+        "ru": (
+            "Что тебя сейчас больше всего мучает?\n"
+            "Можешь выбрать вариант ниже или написать свой.\n\n"
+            "<i>Подсказка: введи / чтобы увидеть команды</i>"
+        ),
+    },
+    "menu_start_over": {
+        "en": "Start over",
+        "ru": "Начать заново",
+    },
+    "menu_change_lang": {
+        "en": "Change language",
+        "ru": "Сменить язык",
+    },
+    "menu_choose_phil": {
+        "en": "Choose philosopher",
+        "ru": "Выбрать философа",
     },
     "problems": {
         "en": [

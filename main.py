@@ -73,6 +73,31 @@ def _language_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True, one_time_keyboard=True)
 
 
+def _menu_keyboard(lang: str) -> ReplyKeyboardMarkup:
+    keyboard = [
+        [KeyboardButton(text=t("menu_start_over", lang))],
+        [
+            KeyboardButton(text=t("menu_change_lang", lang)),
+            KeyboardButton(text=t("menu_choose_phil", lang)),
+        ],
+    ]
+    return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True, one_time_keyboard=True)
+
+
+MENU_ACTIONS = {
+    "menu_start_over": "reset",
+    "menu_change_lang": "language",
+    "menu_choose_phil": "philosopher",
+}
+
+
+def _match_menu_button(text: str, lang: str) -> str | None:
+    for key, action in MENU_ACTIONS.items():
+        if text == t(key, lang):
+            return action
+    return None
+
+
 # ── state & analytics ─────────────────────────────────────────────────
 
 user_state: dict[int, dict] = {}
@@ -156,7 +181,11 @@ async def _send_typing_and_reply(message: Message, state: dict, bot: Bot) -> Non
         message.chat.id, state["philosopher"],
         state["session"]["turns"], reply[:120],
     )
-    await message.answer(f"<b>{state['philosopher']}</b>\n\n{reply}")
+    lang = state.get("language", "en")
+    await message.answer(
+        f"<b>{state['philosopher']}</b>\n\n{reply}",
+        reply_markup=_menu_keyboard(lang),
+    )
 
 
 # ── commands ───────────────────────────────────────────────────────────
@@ -299,6 +328,19 @@ async def text_handler(message: Message) -> None:
             }
         log.info("[user:%d] language changed to %s", uid, lang)
         await message.answer(t("language_set", lang), reply_markup=ReplyKeyboardRemove())
+        return
+
+    # ── menu button shortcuts ──
+    lang = _get_lang(uid, message)
+    action = _match_menu_button(text, lang)
+    if action == "reset":
+        await reset_command_handler(message)
+        return
+    if action == "language":
+        await language_command_handler(message)
+        return
+    if action == "philosopher":
+        await philosopher_command_handler(message)
         return
 
     # ── awaiting problem ──
