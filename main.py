@@ -30,14 +30,6 @@ from texts import TEXTS, t
 
 log = logging.getLogger(__name__)
 
-# #region agent log
-_DBG_PATH = "/Users/anton/Documents/philosophy-tg-bot/.cursor/debug-0698a0.log"
-def _dbg(loc, msg, data=None, hyp=""):
-    import json as _j
-    with open(_DBG_PATH, "a") as _f:
-        _f.write(_j.dumps({"sessionId":"0698a0","location":loc,"message":msg,"data":data or {},"hypothesisId":hyp,"timestamp":int(time()*1000)}) + "\n")
-# #endregion
-
 
 def _require_env(name: str) -> str:
     value = getenv(name)
@@ -65,6 +57,7 @@ LANG_BUTTONS = {"Русский": "ru", "English": "en"}
 THINKING_DELAY = 1.5
 MAX_HISTORY = 5
 REMINDER_CHECK_INTERVAL = 3600
+NOTIFICATION_CHECK_INTERVAL = 300
 INACTIVE_THRESHOLD = 86400
 
 # ── keyboards ──────────────────────────────────────────────────────────
@@ -310,7 +303,11 @@ def _save_notif_prefs() -> None:
     data = {}
     for uid, state in user_state.items():
         if state.get("notifications_enabled"):
-            data[str(uid)] = {k: state[k] for k in _PERSIST_KEYS if k in state}
+            entry = {k: state[k] for k in _PERSIST_KEYS if k in state}
+            last = state.get("last_notification_sent")
+            if last:
+                entry["last_notification_sent"] = last.isoformat()
+            data[str(uid)] = entry
     try:
         _NOTIF_FILE.write_text(json.dumps(data, indent=2))
     except Exception:
@@ -333,6 +330,12 @@ def _load_notif_prefs() -> None:
                 "language": prefs.get("language", "en"),
                 "session": _new_session(),
             }
+        last_str = prefs.pop("last_notification_sent", None)
+        if last_str:
+            try:
+                prefs["last_notification_sent"] = datetime.fromisoformat(last_str)
+            except (ValueError, TypeError):
+                pass
         user_state[uid].update(prefs)
     log.info("Loaded notification prefs for %d user(s)", len(data))
 
@@ -585,9 +588,6 @@ async def text_handler(message: Message) -> None:
         tz = _tz_label(state.get("utc_offset", 0))
         state["step"] = "conversation" if state.get("philosopher") else "awaiting_problem"
         _save_notif_prefs()
-        # #region agent log
-        _dbg("main.py:prefs_saved", "Notif prefs confirmed & persisted", {"uid": uid, "enabled": True, "days": days, "time": text, "utc_offset": state.get("utc_offset")}, "D")
-        # #endregion
         log.info("[user:%d] notifications ON (%s, %s, %s)", uid, _days_label(days, lang), text, tz)
         await message.answer(
             t("notif_confirmed", lang, days=_days_label(days, lang), time=text, tz=tz),
@@ -737,25 +737,16 @@ def _current_day_abbr(now: datetime) -> str:
 
 def should_send_notification(state: dict, now_utc: datetime) -> bool:
     if not state.get("notifications_enabled"):
-        # #region agent log
-        _dbg("main.py:check", "SKIP: not enabled", {"enabled": state.get("notifications_enabled")}, "CD")
-        # #endregion
         return False
     days = state.get("notification_days")
     ntime = state.get("notification_time")
     if not days or not ntime:
-        # #region agent log
-        _dbg("main.py:check", "SKIP: missing days/time", {"days": days, "ntime": ntime}, "CD")
-        # #endregion
         return False
 
     offset_hours = state.get("utc_offset", 0)
     local_now = now_utc + timedelta(hours=offset_hours)
 
     if _current_day_abbr(local_now) not in days:
-        # #region agent log
-        _dbg("main.py:check", "SKIP: wrong day", {"local_day": _current_day_abbr(local_now), "allowed": days, "local_now": str(local_now)}, "A")
-        # #endregion
         return False
 
     m = TIME_RE.match(ntime)
@@ -765,21 +756,12 @@ def should_send_notification(state: dict, now_utc: datetime) -> bool:
     current_min = local_now.hour * 60 + local_now.minute
     diff = abs(current_min - target_min)
     if diff > NOTIF_TIME_WINDOW:
-        # #region agent log
-        _dbg("main.py:check", "SKIP: outside window", {"target": ntime, "target_min": target_min, "current_min": current_min, "diff_min": diff, "window": NOTIF_TIME_WINDOW, "local_now": str(local_now)}, "A")
-        # #endregion
         return False
 
     last_sent = state.get("last_notification_sent")
     if last_sent and last_sent.date() == local_now.date():
-        # #region agent log
-        _dbg("main.py:check", "SKIP: already sent today", {"last_sent_date": str(last_sent.date()), "local_date": str(local_now.date())}, "E")
-        # #endregion
         return False
 
-    # #region agent log
-    _dbg("main.py:check", "WILL SEND", {"ntime": ntime, "local_now": str(local_now), "diff_min": diff}, "OK")
-    # #endregion
     return True
 
 
@@ -788,31 +770,22 @@ def get_notification_text(state: dict) -> str:
 
 
 async def _notification_loop(bot: Bot) -> None:
-    # #region agent log
-    _dbg("main.py:loop_start", "Notification loop started", {}, "B")
-    # #endregion
     first_run = True
     while True:
         if first_run:
             await asyncio.sleep(10)
             first_run = False
         else:
-            await asyncio.sleep(REMINDER_CHECK_INTERVAL)
+            await asyncio.sleep(NOTIFICATION_CHECK_INTERVAL)
         now_utc = datetime.now(timezone.utc)
-        # #region agent log
-        _usnap = {str(u): {"enabled": s.get("notifications_enabled"), "days": s.get("notification_days"), "time": s.get("notification_time"), "offset": s.get("utc_offset"), "last_sent": str(s.get("last_notification_sent")), "step": s.get("step")} for u, s in user_state.items()}
-        _dbg("main.py:loop_tick", "Loop tick", {"utc_now": str(now_utc), "utc_h_m": f"{now_utc.hour}:{now_utc.minute:02d}", "weekday_utc": _current_day_abbr(now_utc), "n_users": len(user_state), "users": _usnap}, "ABCDE")
-        # #endregion
         for uid, state in list(user_state.items()):
             if not should_send_notification(state, now_utc):
                 continue
             try:
                 await bot.send_message(uid, get_notification_text(state))
                 state["last_notification_sent"] = now_utc
+                _save_notif_prefs()
                 log.info("Daily notification sent to user %d", uid)
-                # #region agent log
-                _dbg("main.py:notif_sent", "SENT notification", {"uid": uid}, "OK")
-                # #endregion
             except Exception:
                 log.exception("Failed to send notification to user %d", uid)
 
