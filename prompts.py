@@ -247,3 +247,47 @@ def get_prompt(name: str, lang: str = "en", phase: str = "challenge") -> str:
     prompts = PHILOSOPHER_PROMPTS[name]
     base = prompts.get(lang) or prompts["en"]
     return base + _phase_block(phase, lang if lang in ("en", "ru") else "en")
+
+
+def build_system_prompt_with_context(
+    name: str,
+    lang: str,
+    phase: str,
+    problem: str,
+    uncertain: bool,
+) -> str:
+    """Base philosopher + phase + anchored problem + grounding rules (+ uncertainty layer)."""
+    base = get_prompt(name, lang, phase)
+    lg = lang if lang in ("en", "ru") else "en"
+    prob = (problem or "").strip()
+    if not prob:
+        prob = "(not specified)" if lg == "en" else "(не указано)"
+
+    if lg == "ru":
+        core = f"\n\nИсходная проблема пользователя:\n{prob}\n\n"
+        grounding = (
+            "Каждый ответ должен напрямую относиться к исходной проблеме пользователя.\n"
+            "Избегай общих философских объяснений, если пользователь явно не просит об этом. "
+            "Держи фокус на его ситуации, а не на абстракциях.\n"
+            "Оставайся в образе, но приземляй каждую мысль к его реальности.\n"
+        )
+        if uncertain:
+            grounding += (
+                "Пользователь сказал, что не знает. Не объясняй абстрактные идеи. "
+                "Верни разговор к его ситуации. Задай конкретный вопрос про его жизнь.\n"
+            )
+    else:
+        core = f"\n\nUser's core problem:\n{prob}\n\n"
+        grounding = (
+            "Every response must relate directly to the user's original problem.\n"
+            "Avoid general philosophy explanations unless the user explicitly asks for them. "
+            "Focus on the user's situation, not on abstract lectures.\n"
+            "Stay in character, but ground every point in their reality.\n"
+        )
+        if uncertain:
+            grounding += (
+                "The user said they don't know. Do not explain abstract concepts. "
+                "Force them to relate to their own situation. Ask a concrete question about their life.\n"
+            )
+
+    return base + core + grounding

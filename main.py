@@ -25,8 +25,8 @@ from aiogram.types import (
 )
 
 from llm import ask_llm
-from prompts import get_prompt
-from texts import TEXTS, philosopher_intro, t
+from prompts import build_system_prompt_with_context
+from texts import TEXTS, philosopher_intro, pick_confusion_response, pick_uncertainty_response, t
 
 log = logging.getLogger(__name__)
 
@@ -280,6 +280,46 @@ _AGREEMENT_SIGNALS_RU = (
 )
 
 
+_UNCERTAIN_EN = ("i don't know", "not sure", "no idea")
+_UNCERTAIN_RU = ("не знаю", "не уверен", "не уверена")
+
+_CONFUSED_EN = ("i don't understand", "what do you mean", "not clear")
+_CONFUSED_RU = ("не понимаю", "что ты имеешь в виду", "не ясно")
+
+
+def is_confused_answer(text: str) -> bool:
+    s = text.strip().lower()
+    for ch in ("\u2019", "\u2018", "`"):
+        s = s.replace(ch, "'")
+    for phrase in _CONFUSED_EN:
+        if phrase in s:
+            return True
+    for phrase in _CONFUSED_RU:
+        if phrase in s:
+            return True
+    return False
+
+
+def is_uncertain_answer(text: str) -> bool:
+    s = text.strip().lower()
+    for ch in ("\u2019", "\u2018", "`"):
+        s = s.replace(ch, "'")
+    for phrase in _UNCERTAIN_EN:
+        if phrase in s:
+            return True
+    for phrase in _UNCERTAIN_RU:
+        if phrase in s:
+            return True
+    return False
+
+
+def _latest_user_text_from_history(history: list) -> str:
+    for m in reversed(history):
+        if m.get("role") == "user":
+            return (m.get("content") or "").strip()
+    return ""
+
+
 def detect_agreement(user_message: str) -> bool:
     s = user_message.strip().lower()
     for ch in ("\u2019", "\u2018", "`"):
@@ -378,18 +418,53 @@ async def _check_llm_limits(message: Message, state: dict, uid: int) -> bool:
 async def _send_typing_and_reply(message: Message, state: dict, bot: Bot) -> None:
     lang = state.get("language", "en")
     phase = state.get("conversation_phase", "challenge")
-    system_prompt = get_prompt(state["philosopher"], lang, phase)
+    history = state.get("history") or []
+    latest_user = _latest_user_text_from_history(history)
+    confused = is_confused_answer(latest_user)
+    uncertain = is_uncertain_answer(latest_user)
+
     await bot.send_chat_action(message.chat.id, ChatAction.TYPING)
-    reply = await ask_llm(system_prompt, state["history"])
-    register_request(state)
-    await asyncio.sleep(THINKING_DELAY)
-    _append_history(state, "assistant", reply)
-    _mark_bot_reply(state)
-    log.info(
-        "[user:%d] %s reply (turn %d, phase=%s): %s",
-        message.chat.id, state["philosopher"],
-        state["session"]["turns"], phase, reply[:120],
-    )
+
+    if confused:
+        reply = pick_confusion_response(state["philosopher"], lang, state)
+        register_request(state)
+        await asyncio.sleep(THINKING_DELAY)
+        _append_history(state, "assistant", reply)
+        _mark_bot_reply(state)
+        log.info(
+            "[user:%d] %s CONFUSION_TEMPLATE (turn %d, phase=%s): %s",
+            message.chat.id, state["philosopher"],
+            state["session"]["turns"], phase, reply[:120],
+        )
+    elif uncertain:
+        reply = pick_uncertainty_response(state["philosopher"], lang, state)
+        register_request(state)
+        await asyncio.sleep(THINKING_DELAY)
+        _append_history(state, "assistant", reply)
+        _mark_bot_reply(state)
+        log.info(
+            "[user:%d] %s UNCERTAINTY_TEMPLATE (turn %d, phase=%s): %s",
+            message.chat.id, state["philosopher"],
+            state["session"]["turns"], phase, reply[:120],
+        )
+    else:
+        system_prompt = build_system_prompt_with_context(
+            state["philosopher"],
+            lang,
+            phase,
+            state.get("problem") or "",
+            False,
+        )
+        reply = await ask_llm(system_prompt, state["history"])
+        register_request(state)
+        await asyncio.sleep(THINKING_DELAY)
+        _append_history(state, "assistant", reply)
+        _mark_bot_reply(state)
+        log.info(
+            "[user:%d] %s reply (turn %d, phase=%s): %s",
+            message.chat.id, state["philosopher"],
+            state["session"]["turns"], phase, reply[:120],
+        )
     if state.pop("lead_reply_separator", False):
         body = f"<b>{state['philosopher']}</b>\n\n—\n\n{reply}"
     else:
