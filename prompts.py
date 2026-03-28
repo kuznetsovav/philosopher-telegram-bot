@@ -429,7 +429,100 @@ _PHASE_TEXTS: dict[str, dict[str, str]] = {
             "или ОДНИМ мягким вопросом — не больше одного вопроса всего.\n"
         ),
     },
+    "help": {
+        "en": (
+            "HELP — The user asked for help or is stuck after repeated uncertainty.\n"
+            "Do not respond with a question — no question marks, no rhetorical prompts.\n"
+            "Give one or two sentences of insight in your voice, then ONE concrete, doable action "
+            "they can take today (specific, not vague).\n"
+            "Stay sharp and philosophical, but guide; do not interrogate.\n"
+        ),
+        "ru": (
+            "ПОМОЩЬ — Пользователь просит помощи или застрял после повторного «не знаю».\n"
+            "Не задавай вопросов — ни прямых, ни риторических.\n"
+            "Дай одно–два предложения инсайта в своём голосе, затем ОДНО конкретное действие, "
+            "которое можно сделать сегодня (чётко, не размыто).\n"
+            "Оставайся в характере и философски острым, но направь; не допрашивай.\n"
+        ),
+    },
 }
+
+# Extra steering for help mode (slug IDs). Appended in build_system_prompt_with_context.
+_HELP_MODE_HINT_EN: dict[str, str] = {
+    "nietzsche": (
+        "Help-mode angle: challenge their avoidance, push one bold act that costs something — "
+        "not fantasy, not comfort.\n"
+    ),
+    "sartre": (
+        "Help-mode angle: name their freedom and responsibility; one conscious decision, "
+        "owned without excuses.\n"
+    ),
+    "camus": (
+        "Help-mode angle: the situation may stay absurd; still choose one small meaningful act "
+        "without needing certainty.\n"
+    ),
+    "kierkegaard": (
+        "Help-mode angle: stop infinite hesitation; one committed step that makes the anxiety real "
+        "instead of abstract.\n"
+    ),
+    "marcus": (
+        "Help-mode angle: split what they control from what they don't; one practical step only "
+        "on their side of the line.\n"
+    ),
+    "epictetus": (
+        "Help-mode angle: discipline of judgment — one thing to stop demanding from the world; "
+        "one response they can train today.\n"
+    ),
+    "seneca": (
+        "Help-mode angle: time and temper; one concrete habit that steadies them under pressure.\n"
+    ),
+    "buddha": (
+        "Help-mode angle: loosen one clutch — craving or story; one short practice of noticing "
+        "or letting be.\n"
+    ),
+    "william_james": (
+        "Help-mode angle: treat belief as experimental — one small test in behavior, "
+        "see what changes.\n"
+    ),
+}
+_HELP_MODE_HINT_RU: dict[str, str] = {
+    "nietzsche": (
+        "Угол помощи: бей по уклонению; одно смелое действие с ценой — не фантазия и не удобство.\n"
+    ),
+    "sartre": (
+        "Угол помощи: свобода и ответственность; одно сознательное решение — без отговорок.\n"
+    ),
+    "camus": (
+        "Угол помощи: абсурд может остаться; всё равно один маленький осмысленный шаг без полной ясности.\n"
+    ),
+    "kierkegaard": (
+        "Угол помощи: хватит бесконечного колебания; один шаг обязательства, который делает тревогу живой, "
+        "а не абстрактной.\n"
+    ),
+    "marcus": (
+        "Угол помощи: отдели своё от чужого; один практический шаг только в зоне твоего контроля.\n"
+    ),
+    "epictetus": (
+        "Угол помощи: дисциплина суждения — перестать требовать одного от мира; один ответ, "
+        "который можно тренировать сегодня.\n"
+    ),
+    "seneca": (
+        "Угол помощи: время и гнев; одна конкретная привычка, которая держит ровно под давлением.\n"
+    ),
+    "buddha": (
+        "Угол помощи: ослабить одну хватку — жажду или историю; короткая практика замечания или отпускания.\n"
+    ),
+    "william_james": (
+        "Угол помощи: вера как эксперимент — один маленький тест в поведении, посмотри, что меняется.\n"
+    ),
+}
+
+
+def _help_mode_hint(philosopher_id: str, lang: str) -> str:
+    lg = lang if lang in ("en", "ru") else "en"
+    if lg == "ru":
+        return _HELP_MODE_HINT_RU.get(philosopher_id, "")
+    return _HELP_MODE_HINT_EN.get(philosopher_id, "")
 
 
 def _phase_block(phase: str, lang: str) -> str:
@@ -469,7 +562,12 @@ def build_system_prompt_with_context(
             "Держи фокус на его ситуации, а не на абстракциях.\n"
             "Оставайся в образе, но приземляй каждую мысль к его реальности.\n"
         )
-        if uncertain:
+        if phase == "help":
+            grounding += (
+                "Пользователь просит помощи. Не задавай вопрос. "
+                "Дай конкретное направление или действие в рамках твоей философии.\n"
+            )
+        elif uncertain:
             grounding += (
                 "Пользователь сказал, что не знает. Не объясняй абстрактные идеи. "
                 "Верни разговор к его ситуации. Задай конкретный вопрос про его жизнь.\n"
@@ -482,10 +580,22 @@ def build_system_prompt_with_context(
             "Focus on the user's situation, not on abstract lectures.\n"
             "Stay in character, but ground every point in their reality.\n"
         )
-        if uncertain:
+        if phase == "help":
+            grounding += (
+                "The user asked for help. Do not respond with another question. "
+                "Give a concrete suggestion or direction based on your philosophy. "
+                "Be specific and actionable.\n"
+            )
+        elif uncertain:
             grounding += (
                 "The user said they don't know. Do not explain abstract concepts. "
                 "Force them to relate to their own situation. Ask a concrete question about their life.\n"
             )
 
-    return base + core + grounding
+    extra = ""
+    if phase == "help":
+        hint = _help_mode_hint(name, lg)
+        if hint:
+            extra = "\n" + hint
+
+    return base + core + grounding + extra

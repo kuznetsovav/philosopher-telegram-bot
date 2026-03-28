@@ -408,6 +408,19 @@ _UNCERTAIN_RU = ("не знаю", "не уверен", "не уверена")
 _CONFUSED_EN = ("i don't understand", "what do you mean", "not clear")
 _CONFUSED_RU = ("не понимаю", "что ты имеешь в виду", "не ясно")
 
+_HELP_EN = (
+    "help me",
+    "i don't know what to do",
+    "can you suggest",
+    "what should i do",
+)
+_HELP_RU = (
+    "помоги",
+    "не знаю что делать",
+    "подскажи",
+    "что мне делать",
+)
+
 
 def is_confused_answer(text: str) -> bool:
     s = text.strip().lower()
@@ -430,6 +443,19 @@ def is_uncertain_answer(text: str) -> bool:
         if phrase in s:
             return True
     for phrase in _UNCERTAIN_RU:
+        if phrase in s:
+            return True
+    return False
+
+
+def is_help_request(text: str) -> bool:
+    s = text.strip().lower()
+    for ch in ("\u2019", "\u2018", "`"):
+        s = s.replace(ch, "'")
+    for phrase in _HELP_EN:
+        if phrase in s:
+            return True
+    for phrase in _HELP_RU:
         if phrase in s:
             return True
     return False
@@ -536,6 +562,17 @@ async def _handle_conversation_turn(message: Message, state: dict, uid: int) -> 
     state.setdefault("conversation_phase", "challenge")
     state.setdefault("closure_prompt_shown", False)
     _update_conversation_phase(state, message.text)
+    utext = message.text.strip()
+    if is_help_request(utext):
+        state["conversation_phase"] = "help"
+        state["consecutive_uncertain_count"] = 0
+    elif is_uncertain_answer(utext):
+        n = state.get("consecutive_uncertain_count", 0) + 1
+        state["consecutive_uncertain_count"] = n
+        if n >= 2:
+            state["conversation_phase"] = "help"
+    else:
+        state["consecutive_uncertain_count"] = 0
     _append_history(state, "user", message.text)
     ANALYTICS["current_sessions"][uid] = ANALYTICS["current_sessions"].get(uid, 0) + 1
     log.info("[user:%d] message: %s", uid, message.text)
@@ -571,7 +608,27 @@ async def _send_typing_and_reply(message: Message, state: dict, bot: Bot) -> Non
 
     await bot.send_chat_action(message.chat.id, ChatAction.TYPING)
 
-    if confused:
+    if phase == "help":
+        system_prompt = build_system_prompt_with_context(
+            phil_id,
+            lang,
+            "help",
+            state.get("problem") or "",
+            False,
+        )
+        reply = await ask_llm(system_prompt, state["history"])
+        register_request(state)
+        await asyncio.sleep(THINKING_DELAY)
+        _append_history(state, "assistant", reply)
+        _mark_bot_reply(state)
+        state["conversation_phase"] = "reflection"
+        state["consecutive_uncertain_count"] = 0
+        log.info(
+            "[user:%d] %s HELP_MODE reply (turn %d): %s",
+            message.chat.id, phil_id,
+            state["session"]["turns"], reply[:120],
+        )
+    elif confused:
         reply = pick_confusion_response(phil_id, lang, state)
         register_request(state)
         await asyncio.sleep(THINKING_DELAY)
@@ -1120,6 +1177,7 @@ async def text_handler(message: Message) -> None:
         state["philosopher"] = pid
         state["step"] = "conversation"
         state["conversation_phase"] = "challenge"
+        state["consecutive_uncertain_count"] = 0
         state["closure_prompt_shown"] = False
         state["history"] = [{"role": "user", "content": state["problem"]}]
         _mark_user_activity(state)
