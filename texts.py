@@ -49,6 +49,18 @@ TEXTS: dict[str, dict[str, str]] = {
         "en": "Language set to English.",
         "ru": "Язык изменён на русский.",
     },
+    "reset": {
+        "en": "Let's start over. What is bothering you right now?",
+        "ru": "Начнем сначала. Что тебя сейчас мучает?",
+    },
+    "change_philosopher": {
+        "en": "Who do you want to respond now?",
+        "ru": "Кто теперь ответит?",
+    },
+    "no_problem_yet": {
+        "en": "Send /start first to describe your problem.",
+        "ru": "Сначала отправь /start, чтобы описать проблему.",
+    },
 }
 
 

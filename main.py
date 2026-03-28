@@ -7,25 +7,23 @@ from collections import defaultdict
 from os import getenv
 from time import time
 
-from aiogram import Bot, Dispatcher, F
+from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ChatAction, ParseMode
 from aiogram.filters import Command, CommandStart
 from aiogram.types import (
-    CallbackQuery,
-    InlineKeyboardButton,
     KeyboardButton,
     Message,
     ReplyKeyboardMarkup,
     ReplyKeyboardRemove,
 )
-from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from llm import ask_llm
 from prompts import get_prompt
 from texts import TEXTS, t
 
 log = logging.getLogger(__name__)
+
 
 def _require_env(name: str) -> str:
     value = getenv(name)
@@ -46,53 +44,35 @@ PHILOSOPHERS = {
     "camus": "Camus",
     "sartre": "Sartre",
 }
+PHILOSOPHER_NAMES = list(PHILOSOPHERS.values())
 
-THINKING_DELAY = 1.5  # seconds — brief pause before the LLM reply lands
-SUPPORTED_LANGUAGES = {"ru"}
+LANG_BUTTONS = {"Русский": "ru", "English": "en"}
 
+THINKING_DELAY = 1.5
+MAX_HISTORY = 5
+REMINDER_CHECK_INTERVAL = 3600
+INACTIVE_THRESHOLD = 86400
 
-def _detect_language(language_code: str | None) -> str:
-    if language_code and language_code.lower().startswith("ru"):
-        return "ru"
-    return "en"
-
-
-def _language_keyboard() -> InlineKeyboardBuilder:
-    kb = InlineKeyboardBuilder()
-    kb.row(
-        InlineKeyboardButton(text="Русский", callback_data="lang:ru"),
-        InlineKeyboardButton(text="English", callback_data="lang:en"),
-    )
-    return kb
-
+# ── keyboards ──────────────────────────────────────────────────────────
 
 def _problem_keyboard(lang: str) -> ReplyKeyboardMarkup:
     problems = TEXTS["problems"].get(lang, TEXTS["problems"]["en"])
     keyboard = [[KeyboardButton(text=p)] for p in problems]
-    return ReplyKeyboardMarkup(
-        keyboard=keyboard,
-        resize_keyboard=True,
-        one_time_keyboard=True,
-    )
-
-
-PHILOSOPHER_NAMES = list(PHILOSOPHERS.values())
+    return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True, one_time_keyboard=True)
 
 
 def _philosopher_keyboard() -> ReplyKeyboardMarkup:
     keyboard = [[KeyboardButton(text=name) for name in PHILOSOPHER_NAMES]]
-    return ReplyKeyboardMarkup(
-        keyboard=keyboard,
-        resize_keyboard=True,
-        one_time_keyboard=True,
-    )
-
-MAX_HISTORY = 5
-REMINDER_CHECK_INTERVAL = 3600  # seconds (1 hour)
-INACTIVE_THRESHOLD = 86400      # seconds (24 hours)
+    return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True, one_time_keyboard=True)
 
 
-# user_id -> {"step", "problem", "philosopher", "history", "session"}
+def _language_keyboard() -> ReplyKeyboardMarkup:
+    keyboard = [[KeyboardButton(text=label) for label in LANG_BUTTONS]]
+    return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True, one_time_keyboard=True)
+
+
+# ── state & analytics ─────────────────────────────────────────────────
+
 user_state: dict[int, dict] = {}
 
 ANALYTICS: dict = {
@@ -111,6 +91,19 @@ ANALYTICS: dict = {
 
 def get_total_users() -> int:
     return len(ANALYTICS["users"])
+
+
+def _detect_language(language_code: str | None) -> str:
+    if language_code and language_code.lower().startswith("ru"):
+        return "ru"
+    return "en"
+
+
+def _get_lang(uid: int, message: Message) -> str:
+    state = user_state.get(uid)
+    if state:
+        return state.get("language", "en")
+    return _detect_language(message.from_user.language_code)
 
 
 def _new_session() -> dict:
@@ -149,10 +142,7 @@ def _append_history(state: dict, role: str, content: str) -> None:
     state["history"] = state["history"][-(MAX_HISTORY * 2):]
 
 
-async def _send_typing_and_reply(
-    message: Message, state: dict, bot: Bot,
-) -> None:
-    """Show typing indicator, call LLM, and send the formatted reply."""
+async def _send_typing_and_reply(message: Message, state: dict, bot: Bot) -> None:
     system_prompt = get_prompt(state["philosopher"], state.get("language", "en"))
     await bot.send_chat_action(message.chat.id, ChatAction.TYPING)
     reply = await ask_llm(system_prompt, state["history"])
@@ -161,46 +151,72 @@ async def _send_typing_and_reply(
     _mark_bot_reply(state)
     log.info(
         "[user:%d] %s reply (turn %d): %s",
-        message.chat.id,
-        state["philosopher"],
-        state["session"]["turns"],
-        reply[:120],
+        message.chat.id, state["philosopher"],
+        state["session"]["turns"], reply[:120],
     )
-    formatted = f"<b>{state['philosopher']}</b>\n\n{reply}"
-    await message.answer(formatted)
+    await message.answer(f"<b>{state['philosopher']}</b>\n\n{reply}")
 
+
+# ── commands ───────────────────────────────────────────────────────────
 
 @dp.message(CommandStart())
 async def command_start_handler(message: Message) -> None:
     uid = message.from_user.id
     prev = user_state.get(uid)
+    prev_lang = prev["language"] if prev else None
     if prev and prev.get("session", {}).get("active"):
         _close_session(prev, uid)
+
     ANALYTICS["users"].add(uid)
     ANALYTICS["events"]["start"] += 1
 
-    lang = _detect_language(message.from_user.language_code)
+    lang = prev_lang or _detect_language(message.from_user.language_code)
     user_state[uid] = {
         "step": "awaiting_problem",
         "language": lang,
         "session": _new_session(),
     }
     log.info("[user:%d] START (lang=%s, total_users=%d)", uid, lang, get_total_users())
-    await message.answer(
-        t("start", lang),
-        reply_markup=_problem_keyboard(lang),
-    )
+    await message.answer(t("start", lang), reply_markup=_problem_keyboard(lang))
 
 
 @dp.message(Command("language"))
 async def language_command_handler(message: Message) -> None:
     uid = message.from_user.id
+    lang = _get_lang(uid, message)
+    await message.answer(t("choose_language", lang), reply_markup=_language_keyboard())
+
+
+@dp.message(Command("reset"))
+async def reset_command_handler(message: Message) -> None:
+    uid = message.from_user.id
+    prev = user_state.get(uid)
+    lang = prev["language"] if prev else _detect_language(message.from_user.language_code)
+    if prev and prev.get("session", {}).get("active"):
+        _close_session(prev, uid)
+
+    user_state[uid] = {
+        "step": "awaiting_problem",
+        "language": lang,
+        "session": _new_session(),
+    }
+    log.info("[user:%d] RESET", uid)
+    await message.answer(t("reset", lang), reply_markup=_problem_keyboard(lang))
+
+
+@dp.message(Command("philosopher"))
+async def philosopher_command_handler(message: Message) -> None:
+    uid = message.from_user.id
     state = user_state.get(uid)
-    lang = state["language"] if state else _detect_language(message.from_user.language_code)
-    await message.answer(
-        t("choose_language", lang),
-        reply_markup=_language_keyboard().as_markup(),
-    )
+    lang = _get_lang(uid, message)
+
+    if not state or not state.get("problem"):
+        await message.answer(t("no_problem_yet", lang), reply_markup=ReplyKeyboardRemove())
+        return
+
+    state["step"] = "awaiting_philosopher"
+    log.info("[user:%d] /philosopher — changing philosopher", uid)
+    await message.answer(t("change_philosopher", lang), reply_markup=_philosopher_keyboard())
 
 
 @dp.message(Command("stats"))
@@ -254,32 +270,10 @@ async def stats_command_handler(message: Message) -> None:
         f"<b>Top selected problems:</b>\n"
         f"{top_lines}"
     )
-
     await message.answer(report)
 
 
-@dp.callback_query(F.data.startswith("lang:"))
-async def language_chosen(callback: CallbackQuery) -> None:
-    lang = callback.data.split(":")[1]
-    if lang not in ("ru", "en"):
-        await callback.answer()
-        return
-
-    uid = callback.from_user.id
-    state = user_state.get(uid)
-    if state:
-        state["language"] = lang
-    else:
-        user_state[uid] = {
-            "step": "awaiting_problem",
-            "language": lang,
-            "session": _new_session(),
-        }
-
-    await callback.answer()
-    await callback.message.edit_text(t("language_set", lang))
-    log.info("[user:%d] language changed to %s", uid, lang)
-
+# ── text handler ───────────────────────────────────────────────────────
 
 @dp.message()
 async def text_handler(message: Message) -> None:
@@ -288,11 +282,27 @@ async def text_handler(message: Message) -> None:
 
     uid = message.from_user.id
     state = user_state.get(uid)
+    text = message.text.strip()
 
+    # ── language selection (ReplyKeyboard) ──
+    if text in LANG_BUTTONS:
+        lang = LANG_BUTTONS[text]
+        if state:
+            state["language"] = lang
+        else:
+            user_state[uid] = {
+                "step": "awaiting_problem",
+                "language": lang,
+                "session": _new_session(),
+            }
+        log.info("[user:%d] language changed to %s", uid, lang)
+        await message.answer(t("language_set", lang), reply_markup=ReplyKeyboardRemove())
+        return
+
+    # ── awaiting problem ──
     if not state or state["step"] == "awaiting_problem":
         lang = state["language"] if state else _detect_language(message.from_user.language_code)
         predefined = TEXTS["problems"].get(lang, TEXTS["problems"]["en"])
-        text = message.text.strip()
 
         idk = t("idk_option", lang)
         if text == idk:
@@ -305,10 +315,7 @@ async def text_handler(message: Message) -> None:
             }
             _mark_user_activity(user_state[uid])
             log.info("[user:%d] SELECTED_OPTION: %s", uid, text)
-            await message.answer(
-                t("idk_followup", lang),
-                reply_markup=ReplyKeyboardRemove(),
-            )
+            await message.answer(t("idk_followup", lang), reply_markup=ReplyKeyboardRemove())
             return
 
         if text in predefined:
@@ -328,12 +335,10 @@ async def text_handler(message: Message) -> None:
         state = user_state[uid]
         _mark_user_activity(state)
         ANALYTICS["current_sessions"][uid] = 1
-        await message.answer(
-            t("choose_philosopher", state["language"]),
-            reply_markup=_philosopher_keyboard(),
-        )
+        await message.answer(t("choose_philosopher", lang), reply_markup=_philosopher_keyboard())
         return
 
+    # ── awaiting clarification (after "I don't know") ──
     if state["step"] == "awaiting_clarification":
         ANALYTICS["events"]["entered_text"] += 1
         state["problem"] = message.text
@@ -347,8 +352,9 @@ async def text_handler(message: Message) -> None:
         )
         return
 
+    # ── awaiting philosopher ──
     if state["step"] == "awaiting_philosopher":
-        philosopher = message.text.strip()
+        philosopher = text
         if philosopher not in PHILOSOPHER_NAMES:
             await message.answer(
                 t("pick_philosopher", state.get("language", "en")),
@@ -368,6 +374,7 @@ async def text_handler(message: Message) -> None:
         await _send_typing_and_reply(message, state, message.bot)
         return
 
+    # ── conversation ──
     if state["step"] == "conversation":
         _mark_user_activity(state)
         _append_history(state, "user", message.text)
@@ -376,6 +383,8 @@ async def text_handler(message: Message) -> None:
         await _send_typing_and_reply(message, state, message.bot)
         return
 
+
+# ── reminder loop ──────────────────────────────────────────────────────
 
 async def _reminder_loop(bot: Bot) -> None:
     while True:
@@ -389,7 +398,6 @@ async def _reminder_loop(bot: Bot) -> None:
             last_user = session["last_user_msg_at"]
             if last_reply is None:
                 continue
-            # Only remind when bot replied more recently than the user
             if last_user and last_user >= last_reply:
                 continue
             if now - last_reply >= INACTIVE_THRESHOLD:
@@ -397,10 +405,12 @@ async def _reminder_loop(bot: Bot) -> None:
                     lang = state.get("language", "en")
                     await bot.send_message(uid, t("reminder", lang))
                     session["reminder_sent"] = True
-                    logging.info("Reminder sent to user %d", uid)
+                    log.info("Reminder sent to user %d", uid)
                 except Exception:
-                    logging.exception("Failed to send reminder to user %d", uid)
+                    log.exception("Failed to send reminder to user %d", uid)
 
+
+# ── entry point ────────────────────────────────────────────────────────
 
 async def main() -> None:
     logging.basicConfig(
