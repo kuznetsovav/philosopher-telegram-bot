@@ -185,6 +185,65 @@ PHILOSOPHER_PROMPTS: dict[str, dict[str, str]] = {
 }
 
 
-def get_prompt(name: str, lang: str = "en") -> str:
+_PHASE_OVERRIDE_EN = (
+    "\n\n---\n"
+    "Conversation phase (these instructions OVERRIDE conflicting rules above "
+    "about tone, confrontation, and how you end your reply):\n"
+)
+
+_PHASE_OVERRIDE_RU = (
+    "\n\n---\n"
+    "Фаза разговора (эти указания ПЕРЕКРЫВАЮТ противоречащие правила выше "
+    "о тоне, атаке и том, как ты заканчиваешь ответ):\n"
+)
+
+_PHASE_TEXTS: dict[str, dict[str, str]] = {
+    "challenge": {
+        "en": (
+            "CHALLENGE — Be confrontational. Expose contradictions. Provoke and push.\n"
+            "End with exactly ONE question.\n"
+        ),
+        "ru": (
+            "ВЫЗОВ — Будь провокационным. Выставляй противоречия. Дави и провоцируй.\n"
+            "Закончи ровно ОДНИМ вопросом.\n"
+        ),
+    },
+    "reflection": {
+        "en": (
+            "REFLECTION — The user agrees or has softened. Stop attacking. "
+            "Explore implications calmly. No mockery, no escalation.\n"
+            "End with at most ONE deeper, calm question.\n"
+        ),
+        "ru": (
+            "РАЗМЫШЛЕНИЕ — Пользователь согласен или смягчился. Прекрати атаковать. "
+            "Спокойно развивай следствия. Без насмешек и накала.\n"
+            "Закончи не больше чем ОДНИМ глубоким, спокойным вопросом.\n"
+        ),
+    },
+    "closure": {
+        "en": (
+            "CLOSURE — The user has reached insight. Summarize briefly (2–4 sentences). "
+            "Stop questioning aggressively. You may end with NO question, "
+            "or ONE soft question — never more than one question in total.\n"
+        ),
+        "ru": (
+            "ЗАВЕРШЕНИЕ — Пользователь пришёл к инсайту. Кратко подведи итог (2–4 предложения). "
+            "Прекрати агрессивные допросы. Можешь закончить БЕЗ вопроса "
+            "или ОДНИМ мягким вопросом — не больше одного вопроса всего.\n"
+        ),
+    },
+}
+
+
+def _phase_block(phase: str, lang: str) -> str:
+    lg = lang if lang in ("en", "ru") else "en"
+    p = phase if phase in _PHASE_TEXTS else "challenge"
+    body = _PHASE_TEXTS[p].get(lg) or _PHASE_TEXTS[p]["en"]
+    ov = _PHASE_OVERRIDE_RU if lg == "ru" else _PHASE_OVERRIDE_EN
+    return ov + body
+
+
+def get_prompt(name: str, lang: str = "en", phase: str = "challenge") -> str:
     prompts = PHILOSOPHER_PROMPTS[name]
-    return prompts.get(lang) or prompts["en"]
+    base = prompts.get(lang) or prompts["en"]
+    return base + _phase_block(phase, lang if lang in ("en", "ru") else "en")

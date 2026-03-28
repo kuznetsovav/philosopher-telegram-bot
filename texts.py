@@ -181,6 +181,10 @@ TEXTS: dict[str, dict[str, str]] = {
         "en": "You've reached today's limit. Come back tomorrow.",
         "ru": "Ты достиг лимита на сегодня. Продолжим завтра.",
     },
+    "closure_continue_prompt": {
+        "en": "Do you want to continue or start a new topic?",
+        "ru": "Хочешь продолжить или начать новую тему?",
+    },
 }
 
 

@@ -272,6 +272,50 @@ def _append_history(state: dict, role: str, content: str) -> None:
     state["history"] = state["history"][-(MAX_HISTORY * 2):]
 
 
+_AGREEMENT_SIGNALS_EN = (
+    "you're right", "you are right", "i agree", "makes sense", "true",
+)
+_AGREEMENT_SIGNALS_RU = (
+    "ты прав", "согласен", "согласна", "да, это так", "имеет смысл",
+)
+
+
+def detect_agreement(user_message: str) -> bool:
+    s = user_message.strip().lower()
+    for ch in ("\u2019", "\u2018", "`"):
+        s = s.replace(ch, "'")
+    for sig in _AGREEMENT_SIGNALS_EN:
+        if sig in s:
+            return True
+    for sig in _AGREEMENT_SIGNALS_RU:
+        if sig in s:
+            return True
+    return False
+
+
+def _is_short_reply_for_closure(user_message: str) -> bool:
+    s = user_message.strip()
+    if not s:
+        return False
+    if len(s) <= 24:
+        return True
+    return len(s.split()) <= 4
+
+
+def _update_conversation_phase(state: dict, user_message: str) -> None:
+    phase = state.get("conversation_phase", "challenge")
+    if phase == "challenge":
+        if detect_agreement(user_message):
+            state["conversation_phase"] = "reflection"
+            state["closure_prompt_shown"] = False
+        return
+    if phase == "reflection":
+        if detect_agreement(user_message) or _is_short_reply_for_closure(user_message):
+            state["conversation_phase"] = "closure"
+            state["closure_prompt_shown"] = False
+        return
+
+
 _USAGE_KEYS = ("daily_requests", "last_request_time", "last_reset_date")
 
 
@@ -332,7 +376,9 @@ async def _check_llm_limits(message: Message, state: dict, uid: int) -> bool:
 
 
 async def _send_typing_and_reply(message: Message, state: dict, bot: Bot) -> None:
-    system_prompt = get_prompt(state["philosopher"], state.get("language", "en"))
+    lang = state.get("language", "en")
+    phase = state.get("conversation_phase", "challenge")
+    system_prompt = get_prompt(state["philosopher"], lang, phase)
     await bot.send_chat_action(message.chat.id, ChatAction.TYPING)
     reply = await ask_llm(system_prompt, state["history"])
     register_request(state)
@@ -340,15 +386,17 @@ async def _send_typing_and_reply(message: Message, state: dict, bot: Bot) -> Non
     _append_history(state, "assistant", reply)
     _mark_bot_reply(state)
     log.info(
-        "[user:%d] %s reply (turn %d): %s",
+        "[user:%d] %s reply (turn %d, phase=%s): %s",
         message.chat.id, state["philosopher"],
-        state["session"]["turns"], reply[:120],
+        state["session"]["turns"], phase, reply[:120],
     )
-    lang = state.get("language", "en")
     await message.answer(
         f"<b>{state['philosopher']}</b>\n\n{reply}",
         reply_markup=_menu_keyboard(lang),
     )
+    if phase == "closure" and not state.get("closure_prompt_shown"):
+        await message.answer(t("closure_continue_prompt", lang))
+        state["closure_prompt_shown"] = True
 
 
 # ── commands ───────────────────────────────────────────────────────────
@@ -790,6 +838,8 @@ async def text_handler(message: Message) -> None:
 
         state["philosopher"] = philosopher
         state["step"] = "conversation"
+        state["conversation_phase"] = "challenge"
+        state["closure_prompt_shown"] = False
         state["history"] = [{"role": "user", "content": state["problem"]}]
         _mark_user_activity(state)
 
@@ -802,6 +852,9 @@ async def text_handler(message: Message) -> None:
         _mark_user_activity(state)
         if not await _check_llm_limits(message, state, uid):
             return
+        state.setdefault("conversation_phase", "challenge")
+        state.setdefault("closure_prompt_shown", False)
+        _update_conversation_phase(state, message.text)
         _append_history(state, "user", message.text)
         ANALYTICS["current_sessions"][uid] = ANALYTICS["current_sessions"].get(uid, 0) + 1
         log.info("[user:%d] message: %s", uid, message.text)
