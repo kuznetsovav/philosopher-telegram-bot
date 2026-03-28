@@ -12,6 +12,8 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ChatAction, ParseMode
 from aiogram.filters import Command, CommandStart
 from aiogram.types import (
+    BotCommand,
+    BotCommandScopeDefault,
     KeyboardButton,
     Message,
     ReplyKeyboardMarkup,
@@ -410,6 +412,27 @@ async def _reminder_loop(bot: Bot) -> None:
                     log.exception("Failed to send reminder to user %d", uid)
 
 
+# ── bot commands menu ──────────────────────────────────────────────────
+
+async def set_commands(bot: Bot) -> None:
+    en_commands = [
+        BotCommand(command="start", description="Start conversation"),
+        BotCommand(command="language", description="Change language"),
+        BotCommand(command="reset", description="Start over"),
+        BotCommand(command="philosopher", description="Choose philosopher"),
+        BotCommand(command="stats", description="Analytics (admin)"),
+    ]
+    ru_commands = [
+        BotCommand(command="start", description="Начать диалог"),
+        BotCommand(command="language", description="Сменить язык"),
+        BotCommand(command="reset", description="Начать заново"),
+        BotCommand(command="philosopher", description="Выбрать философа"),
+        BotCommand(command="stats", description="Аналитика (админ)"),
+    ]
+    await bot.set_my_commands(en_commands, scope=BotCommandScopeDefault())
+    await bot.set_my_commands(ru_commands, language_code="ru")
+
+
 # ── entry point ────────────────────────────────────────────────────────
 
 async def main() -> None:
@@ -422,6 +445,7 @@ async def main() -> None:
     log.info("Starting bot...")
     try:
         bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+        await set_commands(bot)
         asyncio.create_task(_reminder_loop(bot))
         await dp.start_polling(bot)
     except Exception:
