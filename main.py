@@ -54,23 +54,43 @@ dp = Dispatcher()
 
 PHILOSOPHY_CATEGORIES: dict[str, dict] = {
     "existentialism": {
-        "label": {"ru": "Выбор и смысл", "en": "Choice & meaning"},
+        "label": {"ru": "Экзистенциализм", "en": "Existentialism"},
+        "blurb": {
+            "ru": "Экзистенциализм — про выбор, свободу и ответственность.",
+            "en": "Existentialism is about choice, freedom, and responsibility.",
+        },
         "philosophers": ["sartre", "camus", "kierkegaard"],
     },
     "stoicism": {
-        "label": {"ru": "Контроль и спокойствие", "en": "Control & calm"},
+        "label": {"ru": "Стоицизм", "en": "Stoicism"},
+        "blurb": {
+            "ru": "Стоицизм — про то, что от тебя зависит, и спокойствие там, где нет.",
+            "en": "Stoicism is about what depends on you—and steady mind where it doesn't.",
+        },
         "philosophers": ["marcus", "epictetus", "seneca"],
     },
     "nietzschean": {
-        "label": {"ru": "Сила и преодоление", "en": "Power & self-overcoming"},
+        "label": {"ru": "Ницшеанство", "en": "Nietzschean"},
+        "blurb": {
+            "ru": "Ницшеанство — про силу, рост через трудности и правду без утешений.",
+            "en": "Nietzschean is about strength, growing through difficulty, and truth without comfort.",
+        },
         "philosophers": ["nietzsche"],
     },
     "buddhism": {
-        "label": {"ru": "Страдание и принятие", "en": "Suffering & acceptance"},
+        "label": {"ru": "Буддизм", "en": "Buddhism"},
+        "blurb": {
+            "ru": "Буддизм — про страдание, привычки ума и более ясный взгляд.",
+            "en": "Buddhism is about suffering, habits of mind, and seeing things more clearly.",
+        },
         "philosophers": ["buddha"],
     },
     "pragmatism": {
-        "label": {"ru": "Действие и результат", "en": "Action & results"},
+        "label": {"ru": "Прагматизм", "en": "Pragmatism"},
+        "blurb": {
+            "ru": "Прагматизм — про то, что реально работает в жизни, а не красивые слова.",
+            "en": "Pragmatism is about what actually works in life—not pretty words.",
+        },
         "philosophers": ["william_james"],
     },
 }
@@ -126,6 +146,11 @@ def _category_id_from_label(text: str, lang: str) -> str | None:
         if text == (labels.get(lang) or labels["en"]):
             return cid
     return None
+
+
+def _category_blurb(category_id: str, lang: str) -> str:
+    row = PHILOSOPHY_CATEGORIES[category_id]["blurb"]
+    return row.get(lang) or row["en"]
 
 
 def _philosopher_displays_in_category(category_id: str) -> list[str]:
@@ -1030,8 +1055,10 @@ async def text_handler(message: Message) -> None:
         state["step"] = "awaiting_philosopher_choice"
         _mark_user_activity(state)
         log.info("[user:%d] SELECTED_PHILOSOPHY: %s", uid, cid)
+        blurb = _category_blurb(cid, lang)
+        follow = t("choose_philosopher_in_category", lang)
         await message.answer(
-            t("choose_philosopher_in_category", lang),
+            f"{blurb}\n\n{follow}",
             reply_markup=_philosophers_in_category_keyboard(cid),
         )
         return
