@@ -68,6 +68,10 @@ TEXTS: dict[str, dict[str, str]] = {
         "en": "Pick a philosopher from the buttons below.",
         "ru": "Выбери философа из кнопок ниже.",
     },
+    "philosopher_chosen": {
+        "en": "You chose {name}.",
+        "ru": "Ты выбрал {name}.",
+    },
     "reminder": {
         "en": "We stopped at the most important part. Do you want to continue?",
         "ru": "Мы остановились на самом важном. Хочешь продолжить?",
@@ -826,19 +830,32 @@ CONFUSION_RESPONSES["william_james"] = {
 
 _DISPLAY_TO_SLUG: dict[str, str] = {
     "nietzsche": "nietzsche",
+    "ницше": "nietzsche",
     "camus": "camus",
+    "камю": "camus",
     "sartre": "sartre",
+    "сартр": "sartre",
     "kierkegaard": "kierkegaard",
+    "кьеркегор": "kierkegaard",
     "marcus aurelius": "marcus",
+    "марк аврелий": "marcus",
     "epictetus": "epictetus",
+    "эпиктет": "epictetus",
     "seneca": "seneca",
+    "сенека": "seneca",
     "the buddha": "buddha",
+    "buddha": "buddha",
+    "будда": "buddha",
     "william james": "william_james",
+    "уильям джеймс": "william_james",
 }
 
 
 def _philosopher_slug(display_name: str) -> str:
-    return _DISPLAY_TO_SLUG.get(display_name.lower().strip(), display_name.lower().replace(" ", "_"))
+    n = display_name.lower().strip()
+    if n in PHILOSOPHER_INFO:
+        return n
+    return _DISPLAY_TO_SLUG.get(n, display_name.lower().replace(" ", "_"))
 
 
 def pick_confusion_response(philosopher_name: str, lang: str, state: dict) -> str:

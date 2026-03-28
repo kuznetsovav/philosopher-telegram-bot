@@ -26,14 +26,7 @@ from aiogram.types import (
 
 from llm import ask_llm
 from prompts import build_system_prompt_with_context
-from texts import (
-    TEXTS,
-    _philosopher_slug,
-    philosopher_intro,
-    pick_confusion_response,
-    pick_uncertainty_response,
-    t,
-)
+from texts import TEXTS, philosopher_intro, pick_confusion_response, pick_uncertainty_response, t
 
 log = logging.getLogger(__name__)
 
@@ -101,17 +94,45 @@ CATEGORY_ORDER = [
     "buddhism",
     "pragmatism",
 ]
-PHILOSOPHER_SLUGS: dict[str, str] = {
-    "sartre": "Sartre",
-    "camus": "Camus",
-    "kierkegaard": "Kierkegaard",
-    "marcus": "Marcus Aurelius",
-    "epictetus": "Epictetus",
-    "seneca": "Seneca",
-    "nietzsche": "Nietzsche",
-    "buddha": "The Buddha",
-    "william_james": "William James",
+PHILOSOPHER_NAMES: dict[str, dict[str, str]] = {
+    "nietzsche": {"ru": "Ницше", "en": "Nietzsche"},
+    "sartre": {"ru": "Сартр", "en": "Sartre"},
+    "camus": {"ru": "Камю", "en": "Camus"},
+    "kierkegaard": {"ru": "Кьеркегор", "en": "Kierkegaard"},
+    "marcus": {"ru": "Марк Аврелий", "en": "Marcus Aurelius"},
+    "epictetus": {"ru": "Эпиктет", "en": "Epictetus"},
+    "seneca": {"ru": "Сенека", "en": "Seneca"},
+    "buddha": {"ru": "Будда", "en": "Buddha"},
+    "william_james": {"ru": "Уильям Джеймс", "en": "William James"},
 }
+
+
+def get_philosopher_id_from_label(label: str, lang: str) -> str | None:
+    for pid, names in PHILOSOPHER_NAMES.items():
+        if names.get(lang) == label:
+            return pid
+    for pid, names in PHILOSOPHER_NAMES.items():
+        for lg in ("en", "ru"):
+            if names.get(lg) == label:
+                return pid
+    return None
+
+
+def _canonical_philosopher_id(raw: str) -> str:
+    if raw in PHILOSOPHER_NAMES:
+        return raw
+    pid = get_philosopher_id_from_label(raw, "en")
+    if pid:
+        return pid
+    return get_philosopher_id_from_label(raw, "ru") or raw
+
+
+def _localized_philosopher_label(philosopher_id: str, lang: str) -> str:
+    pid = _canonical_philosopher_id(philosopher_id)
+    row = PHILOSOPHER_NAMES.get(pid)
+    if not row:
+        return philosopher_id
+    return row.get(lang) or row["en"]
 LANG_BUTTONS = {"Русский": "ru", "English": "en"}
 
 THINKING_DELAY = 1.5
@@ -153,13 +174,16 @@ def _category_blurb(category_id: str, lang: str) -> str:
     return row.get(lang) or row["en"]
 
 
-def _philosopher_displays_in_category(category_id: str) -> list[str]:
-    slugs = PHILOSOPHY_CATEGORIES[category_id]["philosophers"][:3]
-    return [PHILOSOPHER_SLUGS[s] for s in slugs]
+def _philosopher_slugs_in_category(category_id: str) -> list[str]:
+    return PHILOSOPHY_CATEGORIES[category_id]["philosophers"][:3]
 
 
-def _philosophers_in_category_keyboard(category_id: str) -> ReplyKeyboardMarkup:
-    names = _philosopher_displays_in_category(category_id)
+def _philosopher_displays_in_category(category_id: str, lang: str) -> list[str]:
+    return [_localized_philosopher_label(s, lang) for s in _philosopher_slugs_in_category(category_id)]
+
+
+def _philosophers_in_category_keyboard(category_id: str, lang: str) -> ReplyKeyboardMarkup:
+    names = _philosopher_displays_in_category(category_id, lang)
     keyboard = [[KeyboardButton(text=n) for n in names]]
     return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True, one_time_keyboard=True)
 
@@ -501,6 +525,10 @@ def register_request(state: dict) -> None:
 
 async def _handle_conversation_turn(message: Message, state: dict, uid: int) -> None:
     """Continue dialogue with the current philosopher (same as conversation branch)."""
+    if state.get("philosopher"):
+        canon = _canonical_philosopher_id(state["philosopher"])
+        if canon in PHILOSOPHER_NAMES:
+            state["philosopher"] = canon
     state.setdefault("history", [])
     _mark_user_activity(state)
     if not await _check_llm_limits(message, state, uid):
@@ -535,34 +563,39 @@ async def _send_typing_and_reply(message: Message, state: dict, bot: Bot) -> Non
     latest_user = _latest_user_text_from_history(history)
     confused = is_confused_answer(latest_user)
     uncertain = is_uncertain_answer(latest_user)
+    canon = _canonical_philosopher_id(state["philosopher"])
+    if canon in PHILOSOPHER_NAMES:
+        state["philosopher"] = canon
+    phil_id = state["philosopher"]
+    phil_label = _localized_philosopher_label(phil_id, lang)
 
     await bot.send_chat_action(message.chat.id, ChatAction.TYPING)
 
     if confused:
-        reply = pick_confusion_response(state["philosopher"], lang, state)
+        reply = pick_confusion_response(phil_id, lang, state)
         register_request(state)
         await asyncio.sleep(THINKING_DELAY)
         _append_history(state, "assistant", reply)
         _mark_bot_reply(state)
         log.info(
             "[user:%d] %s CONFUSION_TEMPLATE (turn %d, phase=%s): %s",
-            message.chat.id, state["philosopher"],
+            message.chat.id, phil_id,
             state["session"]["turns"], phase, reply[:120],
         )
     elif uncertain:
-        reply = pick_uncertainty_response(state["philosopher"], lang, state)
+        reply = pick_uncertainty_response(phil_id, lang, state)
         register_request(state)
         await asyncio.sleep(THINKING_DELAY)
         _append_history(state, "assistant", reply)
         _mark_bot_reply(state)
         log.info(
             "[user:%d] %s UNCERTAINTY_TEMPLATE (turn %d, phase=%s): %s",
-            message.chat.id, state["philosopher"],
+            message.chat.id, phil_id,
             state["session"]["turns"], phase, reply[:120],
         )
     else:
         system_prompt = build_system_prompt_with_context(
-            state["philosopher"],
+            phil_id,
             lang,
             phase,
             state.get("problem") or "",
@@ -575,13 +608,13 @@ async def _send_typing_and_reply(message: Message, state: dict, bot: Bot) -> Non
         _mark_bot_reply(state)
         log.info(
             "[user:%d] %s reply (turn %d, phase=%s): %s",
-            message.chat.id, state["philosopher"],
+            message.chat.id, phil_id,
             state["session"]["turns"], phase, reply[:120],
         )
     if state.pop("lead_reply_separator", False):
-        body = f"<b>{state['philosopher']}</b>\n\n—\n\n{reply}"
+        body = f"<b>{phil_label}</b>\n\n—\n\n{reply}"
     else:
-        body = f"<b>{state['philosopher']}</b>\n\n{reply}"
+        body = f"<b>{phil_label}</b>\n\n{reply}"
     await message.answer(
         body,
         reply_markup=_menu_keyboard(lang),
@@ -1059,19 +1092,20 @@ async def text_handler(message: Message) -> None:
         follow = t("choose_philosopher_in_category", lang)
         await message.answer(
             f"{blurb}\n\n{follow}",
-            reply_markup=_philosophers_in_category_keyboard(cid),
+            reply_markup=_philosophers_in_category_keyboard(cid, lang),
         )
         return
 
     # ── philosopher within category (voice) ──
     if state["step"] == "awaiting_philosopher_choice":
-        philosopher = text
         category_id = state.get("philosophy")
-        allowed = _philosopher_displays_in_category(category_id) if category_id else []
-        if philosopher not in allowed:
+        allowed_slugs = _philosopher_slugs_in_category(category_id) if category_id else []
+        pid = get_philosopher_id_from_label(text, lang)
+        if not pid or pid not in allowed_slugs:
+            ulang = state.get("language", "en")
             await message.answer(
-                t("pick_philosopher", state.get("language", "en")),
-                reply_markup=_philosophers_in_category_keyboard(category_id)
+                t("pick_philosopher", ulang),
+                reply_markup=_philosophers_in_category_keyboard(category_id, ulang)
                 if category_id
                 else _category_keyboard(lang),
             )
@@ -1080,20 +1114,23 @@ async def text_handler(message: Message) -> None:
         if not await _check_llm_limits(message, state, uid):
             return
 
-        slug = _philosopher_slug(philosopher)
-        ANALYTICS["selected_philosopher"][slug] += 1
-        log.info("[user:%d] SELECTED_PHILOSOPHER: %s (%s)", uid, philosopher, slug)
+        ANALYTICS["selected_philosopher"][pid] += 1
+        log.info("[user:%d] SELECTED_PHILOSOPHER: %s", uid, pid)
 
-        state["philosopher"] = philosopher
+        state["philosopher"] = pid
         state["step"] = "conversation"
         state["conversation_phase"] = "challenge"
         state["closure_prompt_shown"] = False
         state["history"] = [{"role": "user", "content": state["problem"]}]
         _mark_user_activity(state)
 
-        await message.answer("✓", reply_markup=ReplyKeyboardRemove())
         lang = state.get("language", "en")
-        intro = philosopher_intro(philosopher, lang)
+        chosen_name = _localized_philosopher_label(pid, lang)
+        await message.answer(
+            f"✓\n\n{t('philosopher_chosen', lang, name=chosen_name)}",
+            reply_markup=ReplyKeyboardRemove(),
+        )
+        intro = philosopher_intro(pid, lang)
         if intro:
             await message.answer(intro)
             state["lead_reply_separator"] = True

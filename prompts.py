@@ -362,6 +362,25 @@ PHILOSOPHER_PROMPTS: dict[str, dict[str, str]] = {
     "William James": {"en": _WILLIAM_JAMES_EN, "ru": _WILLIAM_JAMES_RU},
 }
 
+# Slug IDs (user state / analytics) → keys in PHILOSOPHER_PROMPTS (unchanged).
+PHILOSOPHER_ID_TO_PROMPT_KEY: dict[str, str] = {
+    "nietzsche": "Nietzsche",
+    "camus": "Camus",
+    "sartre": "Sartre",
+    "kierkegaard": "Kierkegaard",
+    "marcus": "Marcus Aurelius",
+    "epictetus": "Epictetus",
+    "seneca": "Seneca",
+    "buddha": "The Buddha",
+    "william_james": "William James",
+}
+
+
+def prompt_key_for_philosopher_id(philosopher_id: str) -> str:
+    if philosopher_id in PHILOSOPHER_PROMPTS:
+        return philosopher_id
+    return PHILOSOPHER_ID_TO_PROMPT_KEY.get(philosopher_id, "Sartre")
+
 
 _PHASE_OVERRIDE_EN = (
     "\n\n---\n"
@@ -422,7 +441,8 @@ def _phase_block(phase: str, lang: str) -> str:
 
 
 def get_prompt(name: str, lang: str = "en", phase: str = "challenge") -> str:
-    prompts = PHILOSOPHER_PROMPTS.get(name) or PHILOSOPHER_PROMPTS["Sartre"]
+    key = prompt_key_for_philosopher_id(name)
+    prompts = PHILOSOPHER_PROMPTS.get(key) or PHILOSOPHER_PROMPTS["Sartre"]
     base = prompts.get(lang) or prompts["en"]
     return base + _phase_block(phase, lang if lang in ("en", "ru") else "en")
 
