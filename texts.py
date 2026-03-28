@@ -82,8 +82,8 @@ TEXTS: dict[str, dict[str, str]] = {
         "ru": "Сначала отправь /start, чтобы описать проблему.",
     },
     "notif_ask_enable": {
-        "en": "Do you want to receive a daily check-in message?",
-        "ru": "Хочешь получать ежедневное напоминание поговорить с философом?",
+        "en": "Do you want daily check-ins?",
+        "ru": "Хочешь получать напоминания?",
     },
     "notif_btn_enable": {
         "en": "Enable",
@@ -93,25 +93,53 @@ TEXTS: dict[str, dict[str, str]] = {
         "en": "Cancel",
         "ru": "Отмена",
     },
+    "notif_ask_days": {
+        "en": "Choose days:",
+        "ru": "Выбери дни:",
+    },
+    "notif_btn_weekdays": {
+        "en": "Weekdays",
+        "ru": "Будни",
+    },
+    "notif_btn_weekends": {
+        "en": "Weekends",
+        "ru": "Выходные",
+    },
+    "notif_btn_every_day": {
+        "en": "Every day",
+        "ru": "Каждый день",
+    },
     "notif_ask_time": {
-        "en": "When should I message you?",
-        "ru": "Когда тебе удобнее?",
+        "en": "Choose time:",
+        "ru": "Выбери время:",
     },
-    "notif_btn_morning": {
-        "en": "Morning",
-        "ru": "Утро",
+    "notif_btn_custom": {
+        "en": "Custom",
+        "ru": "Другое",
     },
-    "notif_btn_evening": {
-        "en": "Evening",
-        "ru": "Вечер",
+    "notif_ask_custom_time": {
+        "en": "Type time in HH:MM format (24h):",
+        "ru": "Введи время в формате ЧЧ:ММ (24ч):",
+    },
+    "notif_invalid_time": {
+        "en": "Invalid format. Please type time as HH:MM (e.g. 09:00 or 21:30).",
+        "ru": "Неверный формат. Введи время как ЧЧ:ММ (например, 09:00 или 21:30).",
     },
     "notif_btn_turn_off": {
         "en": "Turn off",
         "ru": "Выключить",
     },
-    "notif_enabled": {
-        "en": "Notifications enabled ✓",
-        "ru": "Уведомления включены ✓",
+    "notif_btn_change_time": {
+        "en": "Change time",
+        "ru": "Изменить время",
+    },
+    "notif_btn_change_days": {
+        "en": "Change days",
+        "ru": "Изменить дни",
+    },
+    "notif_confirmed": {
+        "en": "Notifications set: {days} at {time} ✓",
+        "ru": "Уведомления настроены: {days}, {time} ✓",
     },
     "notif_disabled": {
         "en": "Notifications disabled",
@@ -121,9 +149,25 @@ TEXTS: dict[str, dict[str, str]] = {
         "en": "OK, no notifications.",
         "ru": "Хорошо, без уведомлений.",
     },
+    "notif_status": {
+        "en": "Notifications are ON\nDays: {days}\nTime: {time}",
+        "ru": "Уведомления включены\nДни: {days}\nВремя: {time}",
+    },
     "notif_daily": {
         "en": "What is bothering you right now?",
         "ru": "Что тебя сейчас тревожит?",
+    },
+    "days_weekdays": {
+        "en": "weekdays",
+        "ru": "будни",
+    },
+    "days_weekends": {
+        "en": "weekends",
+        "ru": "выходные",
+    },
+    "days_every_day": {
+        "en": "every day",
+        "ru": "каждый день",
     },
 }
 

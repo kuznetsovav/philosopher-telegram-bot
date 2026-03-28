@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import sys
 from collections import defaultdict
 from datetime import datetime, timezone
@@ -99,6 +100,16 @@ def _match_menu_button(text: str, lang: str) -> str | None:
     return None
 
 
+WEEKDAYS = ["mon", "tue", "wed", "thu", "fri"]
+WEEKENDS = ["sat", "sun"]
+ALL_DAYS = WEEKDAYS + WEEKENDS
+WEEKDAY_INDEX = {d: i for i, d in enumerate(ALL_DAYS)}
+
+PRESET_TIMES = ["09:00", "13:00", "19:00"]
+TIME_RE = re.compile(r"^([01]\d|2[0-3]):([0-5]\d)$")
+NOTIF_TIME_WINDOW = 30  # minutes
+
+
 def _notif_enable_keyboard(lang: str) -> ReplyKeyboardMarkup:
     keyboard = [[
         KeyboardButton(text=t("notif_btn_enable", lang)),
@@ -107,25 +118,58 @@ def _notif_enable_keyboard(lang: str) -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True, one_time_keyboard=True)
 
 
-def _notif_time_keyboard(lang: str) -> ReplyKeyboardMarkup:
-    keyboard = [[
-        KeyboardButton(text=t("notif_btn_morning", lang)),
-        KeyboardButton(text=t("notif_btn_evening", lang)),
-    ], [
-        KeyboardButton(text=t("notif_btn_turn_off", lang)),
-    ]]
+def _notif_days_keyboard(lang: str) -> ReplyKeyboardMarkup:
+    keyboard = [
+        [KeyboardButton(text=t("notif_btn_weekdays", lang))],
+        [KeyboardButton(text=t("notif_btn_weekends", lang))],
+        [KeyboardButton(text=t("notif_btn_every_day", lang))],
+    ]
     return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True, one_time_keyboard=True)
 
 
-NOTIF_ENABLE_KEYS = ("notif_btn_enable", "notif_btn_cancel")
-NOTIF_TIME_KEYS = ("notif_btn_morning", "notif_btn_evening", "notif_btn_turn_off")
+def _notif_time_keyboard(lang: str) -> ReplyKeyboardMarkup:
+    keyboard = [
+        [KeyboardButton(text=h) for h in PRESET_TIMES],
+        [KeyboardButton(text=t("notif_btn_custom", lang))],
+    ]
+    return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True, one_time_keyboard=True)
+
+
+def _notif_manage_keyboard(lang: str) -> ReplyKeyboardMarkup:
+    keyboard = [
+        [
+            KeyboardButton(text=t("notif_btn_change_days", lang)),
+            KeyboardButton(text=t("notif_btn_change_time", lang)),
+        ],
+        [KeyboardButton(text=t("notif_btn_turn_off", lang))],
+    ]
+    return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True, one_time_keyboard=True)
+
+
+NOTIF_BTN_KEYS = (
+    "notif_btn_enable", "notif_btn_cancel",
+    "notif_btn_weekdays", "notif_btn_weekends", "notif_btn_every_day",
+    "notif_btn_custom", "notif_btn_turn_off",
+    "notif_btn_change_days", "notif_btn_change_time",
+)
 
 
 def _match_notif_button(text: str, lang: str) -> str | None:
-    for key in NOTIF_ENABLE_KEYS + NOTIF_TIME_KEYS:
+    for key in NOTIF_BTN_KEYS:
         if text == t(key, lang):
             return key
     return None
+
+
+def _days_label(days: list[str], lang: str) -> str:
+    s = set(days)
+    if s == set(ALL_DAYS):
+        return t("days_every_day", lang)
+    if s == set(WEEKDAYS):
+        return t("days_weekdays", lang)
+    if s == set(WEEKENDS):
+        return t("days_weekends", lang)
+    return ", ".join(sorted(days, key=lambda d: WEEKDAY_INDEX.get(d, 99)))
 
 
 # ── state & analytics ─────────────────────────────────────────────────
@@ -220,15 +264,17 @@ async def _send_typing_and_reply(message: Message, state: dict, bot: Bot) -> Non
 
 # ── commands ───────────────────────────────────────────────────────────
 
+_PREF_KEYS = (
+    "notifications_enabled", "notification_days",
+    "notification_time", "last_notification_sent",
+)
+
+
 def _carry_prefs(prev: dict | None) -> dict:
     """Extract persistent preferences from a previous state."""
     if not prev:
         return {}
-    return {
-        k: prev[k]
-        for k in ("notifications_enabled", "notification_time", "last_notification_sent")
-        if k in prev
-    }
+    return {k: prev[k] for k in _PREF_KEYS if k in prev}
 
 
 @dp.message(CommandStart())
@@ -308,8 +354,11 @@ async def notifications_command_handler(message: Message) -> None:
         state = user_state[uid]
 
     if state.get("notifications_enabled"):
-        state["step"] = "notif_choosing_time"
-        await message.answer(t("notif_ask_time", lang), reply_markup=_notif_time_keyboard(lang))
+        days = state.get("notification_days", [])
+        ntime = state.get("notification_time", "—")
+        status = t("notif_status", lang, days=_days_label(days, lang), time=ntime)
+        state["step"] = "notif_managing"
+        await message.answer(status, reply_markup=_notif_manage_keyboard(lang))
     else:
         state["step"] = "notif_enabling"
         await message.answer(t("notif_ask_enable", lang), reply_markup=_notif_enable_keyboard(lang))
@@ -408,39 +457,76 @@ async def text_handler(message: Message) -> None:
         await philosopher_command_handler(message)
         return
 
-    # ── notification buttons ──
+    # ── notification buttons & input ──
     notif_btn = _match_notif_button(text, lang)
     if notif_btn and state:
+        _prev_step = "conversation" if state.get("philosopher") else "awaiting_problem"
+
         if notif_btn == "notif_btn_enable":
-            state["notifications_enabled"] = True
+            state["step"] = "notif_choosing_days"
+            await message.answer(t("notif_ask_days", lang), reply_markup=_notif_days_keyboard(lang))
+            return
+        if notif_btn == "notif_btn_cancel":
+            state["step"] = _prev_step
+            await message.answer(t("notif_cancelled", lang), reply_markup=ReplyKeyboardRemove())
+            return
+        if notif_btn in ("notif_btn_weekdays", "notif_btn_weekends", "notif_btn_every_day"):
+            day_map = {
+                "notif_btn_weekdays": WEEKDAYS,
+                "notif_btn_weekends": WEEKENDS,
+                "notif_btn_every_day": ALL_DAYS,
+            }
+            state["notification_days"] = list(day_map[notif_btn])
             state["step"] = "notif_choosing_time"
             await message.answer(t("notif_ask_time", lang), reply_markup=_notif_time_keyboard(lang))
             return
-        if notif_btn == "notif_btn_cancel":
-            state["step"] = "conversation" if state.get("philosopher") else "awaiting_problem"
-            await message.answer(t("notif_cancelled", lang), reply_markup=ReplyKeyboardRemove())
-            return
-        if notif_btn == "notif_btn_morning":
-            state["notification_time"] = "morning"
-            state["notifications_enabled"] = True
-            state["step"] = "conversation" if state.get("philosopher") else "awaiting_problem"
-            log.info("[user:%d] notifications ON (morning)", uid)
-            await message.answer(t("notif_enabled", lang), reply_markup=ReplyKeyboardRemove())
-            return
-        if notif_btn == "notif_btn_evening":
-            state["notification_time"] = "evening"
-            state["notifications_enabled"] = True
-            state["step"] = "conversation" if state.get("philosopher") else "awaiting_problem"
-            log.info("[user:%d] notifications ON (evening)", uid)
-            await message.answer(t("notif_enabled", lang), reply_markup=ReplyKeyboardRemove())
+        if notif_btn == "notif_btn_custom":
+            state["step"] = "notif_custom_time"
+            await message.answer(t("notif_ask_custom_time", lang), reply_markup=ReplyKeyboardRemove())
             return
         if notif_btn == "notif_btn_turn_off":
             state["notifications_enabled"] = False
+            state["notification_days"] = []
             state["notification_time"] = None
-            state["step"] = "conversation" if state.get("philosopher") else "awaiting_problem"
+            state["step"] = _prev_step
             log.info("[user:%d] notifications OFF", uid)
             await message.answer(t("notif_disabled", lang), reply_markup=ReplyKeyboardRemove())
             return
+        if notif_btn == "notif_btn_change_days":
+            state["step"] = "notif_choosing_days"
+            await message.answer(t("notif_ask_days", lang), reply_markup=_notif_days_keyboard(lang))
+            return
+        if notif_btn == "notif_btn_change_time":
+            state["step"] = "notif_choosing_time"
+            await message.answer(t("notif_ask_time", lang), reply_markup=_notif_time_keyboard(lang))
+            return
+
+    if state and state.get("step") == "notif_choosing_time" and text in PRESET_TIMES:
+        state["notification_time"] = text
+        state["notifications_enabled"] = True
+        days = state.get("notification_days", [])
+        state["step"] = "conversation" if state.get("philosopher") else "awaiting_problem"
+        log.info("[user:%d] notifications ON (%s, %s)", uid, _days_label(days, lang), text)
+        await message.answer(
+            t("notif_confirmed", lang, days=_days_label(days, lang), time=text),
+            reply_markup=ReplyKeyboardRemove(),
+        )
+        return
+
+    if state and state.get("step") == "notif_custom_time":
+        if TIME_RE.match(text):
+            state["notification_time"] = text
+            state["notifications_enabled"] = True
+            days = state.get("notification_days", [])
+            state["step"] = "conversation" if state.get("philosopher") else "awaiting_problem"
+            log.info("[user:%d] notifications ON (%s, %s)", uid, _days_label(days, lang), text)
+            await message.answer(
+                t("notif_confirmed", lang, days=_days_label(days, lang), time=text),
+                reply_markup=ReplyKeyboardRemove(),
+            )
+        else:
+            await message.answer(t("notif_invalid_time", lang))
+        return
 
     # ── awaiting problem ──
     if not state or state["step"] == "awaiting_problem":
@@ -555,21 +641,30 @@ async def _reminder_loop(bot: Bot) -> None:
 
 # ── daily notification loop ────────────────────────────────────────────
 
-MORNING_RANGE = (8, 10)
-EVENING_RANGE = (18, 21)
+_WEEKDAY_ABBR = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
+
+
+def _current_day_abbr(now: datetime) -> str:
+    return _WEEKDAY_ABBR[now.weekday()]
 
 
 def should_send_notification(state: dict, now: datetime) -> bool:
     if not state.get("notifications_enabled"):
         return False
+    days = state.get("notification_days")
     ntime = state.get("notification_time")
-    if ntime is None:
+    if not days or not ntime:
         return False
 
-    hour = now.hour
-    if ntime == "morning" and not (MORNING_RANGE[0] <= hour < MORNING_RANGE[1]):
+    if _current_day_abbr(now) not in days:
         return False
-    if ntime == "evening" and not (EVENING_RANGE[0] <= hour < EVENING_RANGE[1]):
+
+    m = TIME_RE.match(ntime)
+    if not m:
+        return False
+    target_min = int(m.group(1)) * 60 + int(m.group(2))
+    current_min = now.hour * 60 + now.minute
+    if abs(current_min - target_min) > NOTIF_TIME_WINDOW:
         return False
 
     last_sent = state.get("last_notification_sent")
@@ -580,8 +675,7 @@ def should_send_notification(state: dict, now: datetime) -> bool:
 
 
 def get_notification_text(state: dict) -> str:
-    lang = state.get("language", "en")
-    return t("notif_daily", lang)
+    return t("notif_daily", state.get("language", "en"))
 
 
 async def _notification_loop(bot: Bot) -> None:
