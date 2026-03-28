@@ -1,3 +1,5 @@
+from typing import Optional
+
 TEXTS: dict[str, dict[str, str]] = {
     "start": {
         "en": (
@@ -186,6 +188,48 @@ TEXTS: dict[str, dict[str, str]] = {
         "ru": "Хочешь продолжить или начать новую тему?",
     },
 }
+
+PHILOSOPHER_INFO: dict[str, dict[str, str]] = {
+    "nietzsche": {
+        "en": (
+            "Friedrich Nietzsche (1844–1900, Germany)\n"
+            "Philosopher of power, self-overcoming, and breaking illusions."
+        ),
+        "ru": (
+            "Фридрих Ницше (1844–1900, Германия)\n"
+            "Философ воли к силе, преодоления себя и разрушения иллюзий."
+        ),
+    },
+    "sartre": {
+        "en": (
+            "Jean-Paul Sartre (1905–1980, France)\n"
+            "Existentialist. You are fully responsible for your choices."
+        ),
+        "ru": (
+            "Жан-Поль Сартр (1905–1980, Франция)\n"
+            "Экзистенциализм. Ты полностью ответственен за свой выбор."
+        ),
+    },
+    "camus": {
+        "en": (
+            "Albert Camus (1913–1960, France)\n"
+            "Philosopher of the absurd. Life has no meaning — and that’s okay."
+        ),
+        "ru": (
+            "Альбер Камю (1913–1960, Франция)\n"
+            "Философ абсурда. У жизни нет смысла — и это нормально."
+        ),
+    },
+}
+
+
+def philosopher_intro(philosopher_name: str, lang: str) -> Optional[str]:
+    key = philosopher_name.lower()
+    row = PHILOSOPHER_INFO.get(key)
+    if not row:
+        return None
+    lg = lang if lang in ("en", "ru") else "en"
+    return row.get(lg) or row.get("en")
 
 
 def t(key: str, lang: str = "en", **kwargs: str) -> str:

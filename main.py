@@ -26,7 +26,7 @@ from aiogram.types import (
 
 from llm import ask_llm
 from prompts import get_prompt
-from texts import TEXTS, t
+from texts import TEXTS, philosopher_intro, t
 
 log = logging.getLogger(__name__)
 
@@ -390,8 +390,12 @@ async def _send_typing_and_reply(message: Message, state: dict, bot: Bot) -> Non
         message.chat.id, state["philosopher"],
         state["session"]["turns"], phase, reply[:120],
     )
+    if state.pop("lead_reply_separator", False):
+        body = f"<b>{state['philosopher']}</b>\n\n—\n\n{reply}"
+    else:
+        body = f"<b>{state['philosopher']}</b>\n\n{reply}"
     await message.answer(
-        f"<b>{state['philosopher']}</b>\n\n{reply}",
+        body,
         reply_markup=_menu_keyboard(lang),
     )
     if phase == "closure" and not state.get("closure_prompt_shown"):
@@ -844,6 +848,11 @@ async def text_handler(message: Message) -> None:
         _mark_user_activity(state)
 
         await message.answer("✓", reply_markup=ReplyKeyboardRemove())
+        lang = state.get("language", "en")
+        intro = philosopher_intro(philosopher, lang)
+        if intro:
+            await message.answer(intro)
+            state["lead_reply_separator"] = True
         await _send_typing_and_reply(message, state, message.bot)
         return
 
