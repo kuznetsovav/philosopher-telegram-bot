@@ -81,6 +81,50 @@ TEXTS: dict[str, dict[str, str]] = {
         "en": "Send /start first to describe your problem.",
         "ru": "Сначала отправь /start, чтобы описать проблему.",
     },
+    "notif_ask_enable": {
+        "en": "Do you want to receive a daily check-in message?",
+        "ru": "Хочешь получать ежедневное напоминание поговорить с философом?",
+    },
+    "notif_btn_enable": {
+        "en": "Enable",
+        "ru": "Включить",
+    },
+    "notif_btn_cancel": {
+        "en": "Cancel",
+        "ru": "Отмена",
+    },
+    "notif_ask_time": {
+        "en": "When should I message you?",
+        "ru": "Когда тебе удобнее?",
+    },
+    "notif_btn_morning": {
+        "en": "Morning",
+        "ru": "Утро",
+    },
+    "notif_btn_evening": {
+        "en": "Evening",
+        "ru": "Вечер",
+    },
+    "notif_btn_turn_off": {
+        "en": "Turn off",
+        "ru": "Выключить",
+    },
+    "notif_enabled": {
+        "en": "Notifications enabled ✓",
+        "ru": "Уведомления включены ✓",
+    },
+    "notif_disabled": {
+        "en": "Notifications disabled",
+        "ru": "Уведомления выключены",
+    },
+    "notif_cancelled": {
+        "en": "OK, no notifications.",
+        "ru": "Хорошо, без уведомлений.",
+    },
+    "notif_daily": {
+        "en": "What is bothering you right now?",
+        "ru": "Что тебя сейчас тревожит?",
+    },
 }
 
 

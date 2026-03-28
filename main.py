@@ -4,6 +4,7 @@ import asyncio
 import logging
 import sys
 from collections import defaultdict
+from datetime import datetime, timezone
 from os import getenv
 from time import time
 
@@ -95,6 +96,35 @@ def _match_menu_button(text: str, lang: str) -> str | None:
     for key, action in MENU_ACTIONS.items():
         if text == t(key, lang):
             return action
+    return None
+
+
+def _notif_enable_keyboard(lang: str) -> ReplyKeyboardMarkup:
+    keyboard = [[
+        KeyboardButton(text=t("notif_btn_enable", lang)),
+        KeyboardButton(text=t("notif_btn_cancel", lang)),
+    ]]
+    return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True, one_time_keyboard=True)
+
+
+def _notif_time_keyboard(lang: str) -> ReplyKeyboardMarkup:
+    keyboard = [[
+        KeyboardButton(text=t("notif_btn_morning", lang)),
+        KeyboardButton(text=t("notif_btn_evening", lang)),
+    ], [
+        KeyboardButton(text=t("notif_btn_turn_off", lang)),
+    ]]
+    return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True, one_time_keyboard=True)
+
+
+NOTIF_ENABLE_KEYS = ("notif_btn_enable", "notif_btn_cancel")
+NOTIF_TIME_KEYS = ("notif_btn_morning", "notif_btn_evening", "notif_btn_turn_off")
+
+
+def _match_notif_button(text: str, lang: str) -> str | None:
+    for key in NOTIF_ENABLE_KEYS + NOTIF_TIME_KEYS:
+        if text == t(key, lang):
+            return key
     return None
 
 
@@ -190,6 +220,17 @@ async def _send_typing_and_reply(message: Message, state: dict, bot: Bot) -> Non
 
 # ── commands ───────────────────────────────────────────────────────────
 
+def _carry_prefs(prev: dict | None) -> dict:
+    """Extract persistent preferences from a previous state."""
+    if not prev:
+        return {}
+    return {
+        k: prev[k]
+        for k in ("notifications_enabled", "notification_time", "last_notification_sent")
+        if k in prev
+    }
+
+
 @dp.message(CommandStart())
 async def command_start_handler(message: Message) -> None:
     uid = message.from_user.id
@@ -206,6 +247,7 @@ async def command_start_handler(message: Message) -> None:
         "step": "awaiting_problem",
         "language": lang,
         "session": _new_session(),
+        **_carry_prefs(prev),
     }
     log.info("[user:%d] START (lang=%s, total_users=%d)", uid, lang, get_total_users())
     await message.answer(t("start", lang), reply_markup=_problem_keyboard(lang))
@@ -230,6 +272,7 @@ async def reset_command_handler(message: Message) -> None:
         "step": "awaiting_problem",
         "language": lang,
         "session": _new_session(),
+        **_carry_prefs(prev),
     }
     log.info("[user:%d] RESET", uid)
     await message.answer(t("reset", lang), reply_markup=_problem_keyboard(lang))
@@ -248,6 +291,28 @@ async def philosopher_command_handler(message: Message) -> None:
     state["step"] = "awaiting_philosopher"
     log.info("[user:%d] /philosopher — changing philosopher", uid)
     await message.answer(t("change_philosopher", lang), reply_markup=_philosopher_keyboard())
+
+
+@dp.message(Command("notifications"))
+async def notifications_command_handler(message: Message) -> None:
+    uid = message.from_user.id
+    state = user_state.get(uid)
+    lang = _get_lang(uid, message)
+
+    if not state:
+        user_state[uid] = {
+            "step": "awaiting_problem",
+            "language": lang,
+            "session": _new_session(),
+        }
+        state = user_state[uid]
+
+    if state.get("notifications_enabled"):
+        state["step"] = "notif_choosing_time"
+        await message.answer(t("notif_ask_time", lang), reply_markup=_notif_time_keyboard(lang))
+    else:
+        state["step"] = "notif_enabling"
+        await message.answer(t("notif_ask_enable", lang), reply_markup=_notif_enable_keyboard(lang))
 
 
 @dp.message(Command("stats"))
@@ -342,6 +407,40 @@ async def text_handler(message: Message) -> None:
     if action == "philosopher":
         await philosopher_command_handler(message)
         return
+
+    # ── notification buttons ──
+    notif_btn = _match_notif_button(text, lang)
+    if notif_btn and state:
+        if notif_btn == "notif_btn_enable":
+            state["notifications_enabled"] = True
+            state["step"] = "notif_choosing_time"
+            await message.answer(t("notif_ask_time", lang), reply_markup=_notif_time_keyboard(lang))
+            return
+        if notif_btn == "notif_btn_cancel":
+            state["step"] = "conversation" if state.get("philosopher") else "awaiting_problem"
+            await message.answer(t("notif_cancelled", lang), reply_markup=ReplyKeyboardRemove())
+            return
+        if notif_btn == "notif_btn_morning":
+            state["notification_time"] = "morning"
+            state["notifications_enabled"] = True
+            state["step"] = "conversation" if state.get("philosopher") else "awaiting_problem"
+            log.info("[user:%d] notifications ON (morning)", uid)
+            await message.answer(t("notif_enabled", lang), reply_markup=ReplyKeyboardRemove())
+            return
+        if notif_btn == "notif_btn_evening":
+            state["notification_time"] = "evening"
+            state["notifications_enabled"] = True
+            state["step"] = "conversation" if state.get("philosopher") else "awaiting_problem"
+            log.info("[user:%d] notifications ON (evening)", uid)
+            await message.answer(t("notif_enabled", lang), reply_markup=ReplyKeyboardRemove())
+            return
+        if notif_btn == "notif_btn_turn_off":
+            state["notifications_enabled"] = False
+            state["notification_time"] = None
+            state["step"] = "conversation" if state.get("philosopher") else "awaiting_problem"
+            log.info("[user:%d] notifications OFF", uid)
+            await message.answer(t("notif_disabled", lang), reply_markup=ReplyKeyboardRemove())
+            return
 
     # ── awaiting problem ──
     if not state or state["step"] == "awaiting_problem":
@@ -454,6 +553,52 @@ async def _reminder_loop(bot: Bot) -> None:
                     log.exception("Failed to send reminder to user %d", uid)
 
 
+# ── daily notification loop ────────────────────────────────────────────
+
+MORNING_RANGE = (8, 10)
+EVENING_RANGE = (18, 21)
+
+
+def should_send_notification(state: dict, now: datetime) -> bool:
+    if not state.get("notifications_enabled"):
+        return False
+    ntime = state.get("notification_time")
+    if ntime is None:
+        return False
+
+    hour = now.hour
+    if ntime == "morning" and not (MORNING_RANGE[0] <= hour < MORNING_RANGE[1]):
+        return False
+    if ntime == "evening" and not (EVENING_RANGE[0] <= hour < EVENING_RANGE[1]):
+        return False
+
+    last_sent = state.get("last_notification_sent")
+    if last_sent and last_sent.date() == now.date():
+        return False
+
+    return True
+
+
+def get_notification_text(state: dict) -> str:
+    lang = state.get("language", "en")
+    return t("notif_daily", lang)
+
+
+async def _notification_loop(bot: Bot) -> None:
+    while True:
+        await asyncio.sleep(REMINDER_CHECK_INTERVAL)
+        now = datetime.now(timezone.utc)
+        for uid, state in list(user_state.items()):
+            if not should_send_notification(state, now):
+                continue
+            try:
+                await bot.send_message(uid, get_notification_text(state))
+                state["last_notification_sent"] = now
+                log.info("Daily notification sent to user %d", uid)
+            except Exception:
+                log.exception("Failed to send notification to user %d", uid)
+
+
 # ── bot commands menu ──────────────────────────────────────────────────
 
 async def set_commands(bot: Bot) -> None:
@@ -462,6 +607,7 @@ async def set_commands(bot: Bot) -> None:
         BotCommand(command="language", description="Change language"),
         BotCommand(command="reset", description="Start over"),
         BotCommand(command="philosopher", description="Choose philosopher"),
+        BotCommand(command="notifications", description="Daily notifications"),
         BotCommand(command="stats", description="Analytics (admin)"),
     ]
     ru_commands = [
@@ -469,6 +615,7 @@ async def set_commands(bot: Bot) -> None:
         BotCommand(command="language", description="Сменить язык"),
         BotCommand(command="reset", description="Начать заново"),
         BotCommand(command="philosopher", description="Выбрать философа"),
+        BotCommand(command="notifications", description="Ежедневные уведомления"),
         BotCommand(command="stats", description="Аналитика (админ)"),
     ]
     await bot.set_my_commands(en_commands, scope=BotCommandScopeDefault())
@@ -489,6 +636,7 @@ async def main() -> None:
         bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
         await set_commands(bot)
         asyncio.create_task(_reminder_loop(bot))
+        asyncio.create_task(_notification_loop(bot))
         await dp.start_polling(bot)
     except Exception:
         log.exception("Bot crashed")
