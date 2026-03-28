@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import re
 import sys
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from os import getenv
+from pathlib import Path
 from time import time
 
 from aiogram import Bot, Dispatcher
@@ -300,6 +302,40 @@ _PREF_KEYS = (
     "notification_time", "utc_offset", "last_notification_sent",
 )
 
+_NOTIF_FILE = Path(__file__).parent / "notification_prefs.json"
+_PERSIST_KEYS = ("notifications_enabled", "notification_days", "notification_time", "utc_offset", "language")
+
+
+def _save_notif_prefs() -> None:
+    data = {}
+    for uid, state in user_state.items():
+        if state.get("notifications_enabled"):
+            data[str(uid)] = {k: state[k] for k in _PERSIST_KEYS if k in state}
+    try:
+        _NOTIF_FILE.write_text(json.dumps(data, indent=2))
+    except Exception:
+        log.exception("Failed to save notification prefs")
+
+
+def _load_notif_prefs() -> None:
+    if not _NOTIF_FILE.exists():
+        return
+    try:
+        data = json.loads(_NOTIF_FILE.read_text())
+    except Exception:
+        log.exception("Failed to load notification prefs")
+        return
+    for uid_str, prefs in data.items():
+        uid = int(uid_str)
+        if uid not in user_state:
+            user_state[uid] = {
+                "step": "awaiting_problem",
+                "language": prefs.get("language", "en"),
+                "session": _new_session(),
+            }
+        user_state[uid].update(prefs)
+    log.info("Loaded notification prefs for %d user(s)", len(data))
+
 
 def _carry_prefs(prev: dict | None) -> dict:
     """Extract persistent preferences from a previous state."""
@@ -521,6 +557,7 @@ async def text_handler(message: Message) -> None:
             state["notification_days"] = []
             state["notification_time"] = None
             state["step"] = _prev_step
+            _save_notif_prefs()
             log.info("[user:%d] notifications OFF", uid)
             await message.answer(t("notif_disabled", lang), reply_markup=ReplyKeyboardRemove())
             return
@@ -547,8 +584,9 @@ async def text_handler(message: Message) -> None:
         days = state.get("notification_days", [])
         tz = _tz_label(state.get("utc_offset", 0))
         state["step"] = "conversation" if state.get("philosopher") else "awaiting_problem"
+        _save_notif_prefs()
         # #region agent log
-        _dbg("main.py:prefs_saved", "Notif prefs confirmed", {"uid": uid, "enabled": True, "days": days, "time": text, "utc_offset": state.get("utc_offset"), "step_after": state["step"]}, "D")
+        _dbg("main.py:prefs_saved", "Notif prefs confirmed & persisted", {"uid": uid, "enabled": True, "days": days, "time": text, "utc_offset": state.get("utc_offset")}, "D")
         # #endregion
         log.info("[user:%d] notifications ON (%s, %s, %s)", uid, _days_label(days, lang), text, tz)
         await message.answer(
@@ -565,6 +603,7 @@ async def text_handler(message: Message) -> None:
             days = state.get("notification_days", [])
             tz = _tz_label(state.get("utc_offset", 0))
             state["step"] = "conversation" if state.get("philosopher") else "awaiting_problem"
+            _save_notif_prefs()
             log.info("[user:%d] notifications ON (%s, %s, %s)", uid, _days_label(days, lang), text, tz)
             await message.answer(
                 t("notif_confirmed", lang, days=_days_label(days, lang), time=text, tz=tz),
@@ -752,8 +791,13 @@ async def _notification_loop(bot: Bot) -> None:
     # #region agent log
     _dbg("main.py:loop_start", "Notification loop started", {}, "B")
     # #endregion
+    first_run = True
     while True:
-        await asyncio.sleep(60)  # DEBUG: reduced from REMINDER_CHECK_INTERVAL
+        if first_run:
+            await asyncio.sleep(10)
+            first_run = False
+        else:
+            await asyncio.sleep(REMINDER_CHECK_INTERVAL)
         now_utc = datetime.now(timezone.utc)
         # #region agent log
         _usnap = {str(u): {"enabled": s.get("notifications_enabled"), "days": s.get("notification_days"), "time": s.get("notification_time"), "offset": s.get("utc_offset"), "last_sent": str(s.get("last_notification_sent")), "step": s.get("step")} for u, s in user_state.items()}
@@ -806,6 +850,7 @@ async def main() -> None:
         datefmt="%H:%M:%S",
     )
     log.info("Starting bot...")
+    _load_notif_prefs()
     try:
         bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
         await set_commands(bot)
