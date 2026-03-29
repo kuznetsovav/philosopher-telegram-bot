@@ -88,6 +88,10 @@ TEXTS: dict[str, dict[str, str]] = {
         "en": "Let's start over. What is bothering you right now?",
         "ru": "Начнем сначала. Что тебя сейчас мучает?",
     },
+    "clear_history": {
+        "en": "History cleared. Let's start fresh.\n\nWhat is bothering you right now?",
+        "ru": "История очищена. Начнем заново.\n\nЧто тебя сейчас беспокоит?",
+    },
     "change_philosopher": {
         "en": "Who do you want to respond now?",
         "ru": "Кто теперь ответит?",

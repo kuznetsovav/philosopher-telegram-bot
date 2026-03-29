@@ -812,6 +812,39 @@ async def reset_command_handler(message: Message) -> None:
     await message.answer(t("reset", lang), reply_markup=_problem_keyboard(lang))
 
 
+@dp.message(Command("clear"))
+async def clear_command_handler(message: Message) -> None:
+    uid = message.from_user.id
+    state = user_state.get(uid)
+    lang = _get_lang(uid, message)
+
+    if not state:
+        user_state[uid] = {
+            "step": "awaiting_problem",
+            "language": lang,
+            "session": _new_session(),
+            **_default_usage(),
+        }
+        state = user_state[uid]
+    else:
+        if state.get("session", {}).get("active"):
+            _close_session(state, uid)
+        state["session"] = _new_session()
+        state["step"] = "awaiting_problem"
+        state["problem"] = None
+        state["history"] = []
+        state["philosopher"] = None
+        state["philosophy"] = None
+        state["conversation_phase"] = "challenge"
+        state["consecutive_uncertain_count"] = 0
+        state["closure_prompt_shown"] = False
+        for k in ("lead_reply_separator", "_last_confusion_template", "_last_uncertainty_template"):
+            state.pop(k, None)
+
+    log.info("[user:%d] CLEAR_HISTORY", uid)
+    await message.answer(t("clear_history", lang), reply_markup=_problem_keyboard(lang))
+
+
 @dp.message(Command("philosopher"))
 async def philosopher_command_handler(message: Message) -> None:
     uid = message.from_user.id
@@ -1313,6 +1346,7 @@ async def set_commands(bot: Bot) -> None:
         BotCommand(command="start", description="Start conversation"),
         BotCommand(command="language", description="Change language"),
         BotCommand(command="reset", description="Start over"),
+        BotCommand(command="clear", description="Clear conversation history"),
         BotCommand(command="philosopher", description="Choose philosopher"),
         BotCommand(command="notifications", description="Daily notifications"),
         BotCommand(command="stats", description="Analytics (admin)"),
@@ -1321,6 +1355,7 @@ async def set_commands(bot: Bot) -> None:
         BotCommand(command="start", description="Начать диалог"),
         BotCommand(command="language", description="Сменить язык"),
         BotCommand(command="reset", description="Начать заново"),
+        BotCommand(command="clear", description="Очистить историю диалога"),
         BotCommand(command="philosopher", description="Выбрать философа"),
         BotCommand(command="notifications", description="Ежедневные уведомления"),
         BotCommand(command="stats", description="Аналитика (админ)"),
