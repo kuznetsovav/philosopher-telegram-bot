@@ -812,6 +812,30 @@ async def reset_command_handler(message: Message) -> None:
     await message.answer(t("reset", lang), reply_markup=_problem_keyboard(lang))
 
 
+def _wipe_conversation_state(state: dict, uid: int) -> None:
+    """Remove all in-bot conversation context for this user (prefs and usage unchanged)."""
+    if state.get("session", {}).get("active"):
+        _close_session(state, uid)
+    # Stale counter from problem/category flow before session was "active"
+    ANALYTICS["current_sessions"].pop(uid, None)
+
+    state["session"] = _new_session()
+    state["step"] = "awaiting_problem"
+    state["problem"] = None
+    state["philosophy"] = None
+    state["philosopher"] = None
+    state["history"] = []
+    state["conversation_phase"] = "challenge"
+    state["consecutive_uncertain_count"] = 0
+    state["closure_prompt_shown"] = False
+    for k in ("lead_reply_separator", "_last_confusion_template", "_last_uncertainty_template"):
+        state.pop(k, None)
+    # Drop any other underscore-prefixed conversation scratch (future-safe)
+    for k in list(state.keys()):
+        if k.startswith("_"):
+            state.pop(k, None)
+
+
 @dp.message(Command("clear"))
 async def clear_command_handler(message: Message) -> None:
     uid = message.from_user.id
@@ -823,23 +847,12 @@ async def clear_command_handler(message: Message) -> None:
             "step": "awaiting_problem",
             "language": lang,
             "session": _new_session(),
+            "history": [],
             **_default_usage(),
         }
-        state = user_state[uid]
+        ANALYTICS["current_sessions"].pop(uid, None)
     else:
-        if state.get("session", {}).get("active"):
-            _close_session(state, uid)
-        state["session"] = _new_session()
-        state["step"] = "awaiting_problem"
-        state["problem"] = None
-        state["history"] = []
-        state["philosopher"] = None
-        state["philosophy"] = None
-        state["conversation_phase"] = "challenge"
-        state["consecutive_uncertain_count"] = 0
-        state["closure_prompt_shown"] = False
-        for k in ("lead_reply_separator", "_last_confusion_template", "_last_uncertainty_template"):
-            state.pop(k, None)
+        _wipe_conversation_state(state, uid)
 
     log.info("[user:%d] CLEAR_HISTORY", uid)
     await message.answer(t("clear_history", lang), reply_markup=_problem_keyboard(lang))
