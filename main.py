@@ -26,7 +26,7 @@ from aiogram.types import (
 
 from llm import ask_llm
 from prompts import build_system_prompt_with_context
-from texts import TEXTS, philosopher_intro, pick_confusion_response, pick_uncertainty_response, t
+from texts import TEXTS, philosopher_intro, t
 
 log = logging.getLogger(__name__)
 
@@ -614,7 +614,6 @@ async def _send_typing_and_reply(message: Message, state: dict, bot: Bot) -> Non
             lang,
             "help",
             state.get("problem") or "",
-            False,
         )
         reply = await ask_llm(system_prompt, state["history"])
         register_request(state)
@@ -629,24 +628,38 @@ async def _send_typing_and_reply(message: Message, state: dict, bot: Bot) -> Non
             state["session"]["turns"], reply[:120],
         )
     elif confused:
-        reply = pick_confusion_response(phil_id, lang, state)
+        system_prompt = build_system_prompt_with_context(
+            phil_id,
+            lang,
+            phase,
+            state.get("problem") or "",
+            confused=True,
+        )
+        reply = await ask_llm(system_prompt, state["history"])
         register_request(state)
         await asyncio.sleep(THINKING_DELAY)
         _append_history(state, "assistant", reply)
         _mark_bot_reply(state)
         log.info(
-            "[user:%d] %s CONFUSION_TEMPLATE (turn %d, phase=%s): %s",
+            "[user:%d] %s confused reply (turn %d, phase=%s): %s",
             message.chat.id, phil_id,
             state["session"]["turns"], phase, reply[:120],
         )
     elif uncertain:
-        reply = pick_uncertainty_response(phil_id, lang, state)
+        system_prompt = build_system_prompt_with_context(
+            phil_id,
+            lang,
+            phase,
+            state.get("problem") or "",
+            uncertain=True,
+        )
+        reply = await ask_llm(system_prompt, state["history"])
         register_request(state)
         await asyncio.sleep(THINKING_DELAY)
         _append_history(state, "assistant", reply)
         _mark_bot_reply(state)
         log.info(
-            "[user:%d] %s UNCERTAINTY_TEMPLATE (turn %d, phase=%s): %s",
+            "[user:%d] %s uncertain reply (turn %d, phase=%s): %s",
             message.chat.id, phil_id,
             state["session"]["turns"], phase, reply[:120],
         )
@@ -656,7 +669,6 @@ async def _send_typing_and_reply(message: Message, state: dict, bot: Bot) -> Non
             lang,
             phase,
             state.get("problem") or "",
-            False,
         )
         reply = await ask_llm(system_prompt, state["history"])
         register_request(state)
