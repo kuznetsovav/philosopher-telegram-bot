@@ -24,6 +24,7 @@ from aiogram.types import (
     ReplyKeyboardRemove,
 )
 
+from existentialism_full_text import EXISTENTIALISM_FULL_TEXT
 from llm import ask_llm
 from prompts import build_system_prompt_with_context
 from texts import TEXTS, philosopher_intro, t
@@ -786,6 +787,16 @@ async def command_start_handler(message: Message) -> None:
     await message.answer(t("start", lang), reply_markup=_problem_keyboard(lang))
 
 
+@dp.message(Command("existentialism"))
+async def existentialism_command_handler(message: Message) -> None:
+    """Send the full verbatim existentialism reference (RU)."""
+    uid = message.from_user.id
+    lang = _get_lang(uid, message)
+    body = EXISTENTIALISM_FULL_TEXT.get(lang) or EXISTENTIALISM_FULL_TEXT["ru"]
+    log.info("[user:%d] EXISTENTIALISM_FULL_TEXT", uid)
+    await message.answer(body)
+
+
 @dp.message(Command("language"))
 async def language_command_handler(message: Message) -> None:
     uid = message.from_user.id
@@ -1360,6 +1371,7 @@ async def set_commands(bot: Bot) -> None:
         BotCommand(command="language", description="Change language"),
         BotCommand(command="reset", description="Start over"),
         BotCommand(command="clear", description="Clear conversation history"),
+        BotCommand(command="existentialism", description="Full existentialism text (RU)"),
         BotCommand(command="philosopher", description="Choose philosopher"),
         BotCommand(command="notifications", description="Daily notifications"),
         BotCommand(command="stats", description="Analytics (admin)"),
@@ -1369,6 +1381,7 @@ async def set_commands(bot: Bot) -> None:
         BotCommand(command="language", description="Сменить язык"),
         BotCommand(command="reset", description="Начать заново"),
         BotCommand(command="clear", description="Очистить историю диалога"),
+        BotCommand(command="existentialism", description="Полный текст об экзистенциализме"),
         BotCommand(command="philosopher", description="Выбрать философа"),
         BotCommand(command="notifications", description="Ежедневные уведомления"),
         BotCommand(command="stats", description="Аналитика (админ)"),
