@@ -4,13 +4,13 @@ from typing import Optional
 TEXTS: dict[str, dict[str, str]] = {
     "start": {
         "en": (
-            "What is bothering you right now?\n"
-            "You can choose an option below or type your own.\n\n"
+            "What is on your mind right now?\n"
+            "Choose a topic or type your own.\n\n"
             "<i>Tip: type / to see available commands</i>"
         ),
         "ru": (
-            "Что тебя сейчас больше всего мучает?\n"
-            "Можешь выбрать вариант ниже или написать свой.\n\n"
+            "Что тебя сейчас волнует?\n"
+            "Выбери тему или напиши свою.\n\n"
             "<i>Подсказка: введи / чтобы увидеть команды</i>"
         ),
     },
@@ -28,20 +28,26 @@ TEXTS: dict[str, dict[str, str]] = {
     },
     "problems": {
         "en": [
-            "I keep choosing comfort over what actually matters",
-            "I said yes to a life I never wanted",
-            "I'm pretending everything is fine and it's killing me",
-            "I can't forgive someone and it's eating me alive",
-            "I wasted years and can't get them back",
-            "I don't know what's bothering me",
+            "🔄 Want to change jobs / thinking about leaving",
+            "💰 Want to earn more / unhappy with income",
+            "⚖️ Burning out / no work-life balance",
+            "👨‍👩‍👦 Difficulties in family or relationships",
+            "🧭 Don't understand where to go next",
+            "🚀 Thinking about my own project / business",
+            "📉 Lost motivation / everything feels meaningless",
+            "⏳ Can't make an important decision",
+            "😤 Overwhelmed / too much going on",
         ],
         "ru": [
-            "Я раз за разом выбираю комфорт вместо того, что важно",
-            "Я согласился на жизнь, которую не выбирал",
-            "Я делаю вид, что всё нормально, и это меня разрушает",
-            "Я не могу простить одного человека и это сжирает меня",
-            "Я потратил годы впустую и не могу их вернуть",
-            "Я не знаю, что меня мучает",
+            "🔄 Хочу сменить работу / думаю об уходе",
+            "💰 Хочу зарабатывать больше / не устраивает доход",
+            "⚖️ Выгораю / нет баланса между работой и жизнью",
+            "👨‍👩‍👦 Сложности в семье или отношениях",
+            "🧭 Не понимаю, куда двигаться дальше",
+            "🚀 Думаю о своём проекте / бизнесе",
+            "📉 Потерял мотивацию / всё стало бессмысленным",
+            "⏳ Не могу принять важное решение",
+            "😤 Перегруз / слишком много всего навалилось",
         ],
     },
     "idk_option": {
