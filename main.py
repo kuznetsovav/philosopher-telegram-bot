@@ -601,94 +601,40 @@ async def _send_typing_and_reply(message: Message, state: dict, bot: Bot) -> Non
     latest_user = _latest_user_text_from_history(history)
     confused = is_confused_answer(latest_user)
     uncertain = is_uncertain_answer(latest_user)
-    canon = _canonical_philosopher_id(state["philosopher"])
-    if canon in PHILOSOPHER_NAMES:
-        state["philosopher"] = canon
-    phil_id = state["philosopher"]
-    phil_label = _localized_philosopher_label(phil_id, lang)
+    phil_id = state.get("philosopher") or ""
 
     await bot.send_chat_action(message.chat.id, ChatAction.TYPING)
 
+    system_prompt = build_system_prompt_with_context(
+        phil_id,
+        lang,
+        phase,
+        state.get("problem") or "",
+        uncertain=uncertain,
+        confused=confused,
+    )
+    reply = await ask_llm(system_prompt, state["history"])
+    register_request(state)
+    await asyncio.sleep(THINKING_DELAY)
+    _append_history(state, "assistant", reply)
+    _mark_bot_reply(state)
+
+    tag = "help" if phase == "help" else (
+        "confused" if confused else ("uncertain" if uncertain else "reply")
+    )
+    log.info(
+        "[user:%d] %s %s (turn %d, phase=%s): %s",
+        message.chat.id, phil_id or "framework", tag,
+        state["session"]["turns"], phase, reply[:120],
+    )
+
     if phase == "help":
-        system_prompt = build_system_prompt_with_context(
-            phil_id,
-            lang,
-            "help",
-            state.get("problem") or "",
-        )
-        reply = await ask_llm(system_prompt, state["history"])
-        register_request(state)
-        await asyncio.sleep(THINKING_DELAY)
-        _append_history(state, "assistant", reply)
-        _mark_bot_reply(state)
         state["conversation_phase"] = "reflection"
         state["consecutive_uncertain_count"] = 0
-        log.info(
-            "[user:%d] %s HELP_MODE reply (turn %d): %s",
-            message.chat.id, phil_id,
-            state["session"]["turns"], reply[:120],
-        )
-    elif confused:
-        system_prompt = build_system_prompt_with_context(
-            phil_id,
-            lang,
-            phase,
-            state.get("problem") or "",
-            confused=True,
-        )
-        reply = await ask_llm(system_prompt, state["history"])
-        register_request(state)
-        await asyncio.sleep(THINKING_DELAY)
-        _append_history(state, "assistant", reply)
-        _mark_bot_reply(state)
-        log.info(
-            "[user:%d] %s confused reply (turn %d, phase=%s): %s",
-            message.chat.id, phil_id,
-            state["session"]["turns"], phase, reply[:120],
-        )
-    elif uncertain:
-        system_prompt = build_system_prompt_with_context(
-            phil_id,
-            lang,
-            phase,
-            state.get("problem") or "",
-            uncertain=True,
-        )
-        reply = await ask_llm(system_prompt, state["history"])
-        register_request(state)
-        await asyncio.sleep(THINKING_DELAY)
-        _append_history(state, "assistant", reply)
-        _mark_bot_reply(state)
-        log.info(
-            "[user:%d] %s uncertain reply (turn %d, phase=%s): %s",
-            message.chat.id, phil_id,
-            state["session"]["turns"], phase, reply[:120],
-        )
-    else:
-        system_prompt = build_system_prompt_with_context(
-            phil_id,
-            lang,
-            phase,
-            state.get("problem") or "",
-        )
-        reply = await ask_llm(system_prompt, state["history"])
-        register_request(state)
-        await asyncio.sleep(THINKING_DELAY)
-        _append_history(state, "assistant", reply)
-        _mark_bot_reply(state)
-        log.info(
-            "[user:%d] %s reply (turn %d, phase=%s): %s",
-            message.chat.id, phil_id,
-            state["session"]["turns"], phase, reply[:120],
-        )
-    if state.pop("lead_reply_separator", False):
-        body = f"<b>{phil_label}</b>\n\n—\n\n{reply}"
-    else:
-        body = f"<b>{phil_label}</b>\n\n{reply}"
-    await message.answer(
-        body,
-        reply_markup=_menu_keyboard(lang),
-    )
+
+    state.pop("lead_reply_separator", None)
+    await message.answer(reply, reply_markup=_menu_keyboard(lang))
+
     if phase == "closure" and not state.get("closure_prompt_shown"):
         await message.answer(t("closure_continue_prompt", lang))
         state["closure_prompt_shown"] = True
