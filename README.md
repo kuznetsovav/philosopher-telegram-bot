@@ -12,12 +12,12 @@ Every response follows a strict format:
 
 | Block | Lens |
 |---|---|
-| 🧠 СМЫСЛ | Existentialism — values, choice, inner conflict |
-| ⚙️ РЕЗУЛЬТАТ | Pragmatism — consequences, growth, benefit |
-| 🧱 КОНТРОЛЬ | Stoicism — what you control vs. what you don't |
-| 🌍 КОНТЕКСТ | Reality — constraints, environment, obligations |
-| 💥 ВЫВОД | Clear recommendation or 2–3 options |
-| 👉 СЛЕДУЮЩИЙ ШАГ | One concrete action to take right now |
+| 🧠 Meaning | Existentialism — values, choice, inner conflict |
+| ⚙️ Outcome | Pragmatism — consequences, growth, benefit |
+| 🧱 Control | Stoicism — what you control vs. what you don't |
+| 🌍 Context | Reality — constraints, environment, obligations |
+| 💥 Conclusion | Clear recommendation or 2 options with explanation |
+| 👉 Next Step | One concrete action to take right now |
 
 ## Bot Commands
 
