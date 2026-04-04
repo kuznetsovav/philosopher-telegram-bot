@@ -4,39 +4,31 @@ from typing import Optional
 TEXTS: dict[str, dict[str, str]] = {
     "start": {
         "en": (
-            "What is on your mind right now?\n"
-            "Choose a topic or type your own.\n\n"
-            "<i>Tip: type / to see available commands</i>"
+            "Что тебя тревожит сейчас?\n"
+            "Выбери тему или напиши свою.\n\n"
+            "<i>Подсказка: введи / чтобы увидеть команды</i>"
         ),
         "ru": (
-            "Что тебя сейчас волнует?\n"
+            "Что тебя тревожит сейчас?\n"
             "Выбери тему или напиши свою.\n\n"
             "<i>Подсказка: введи / чтобы увидеть команды</i>"
         ),
     },
     "menu_start_over": {
-        "en": "Start over",
+        "en": "Начать заново",
         "ru": "Начать заново",
-    },
-    "menu_change_lang": {
-        "en": "Change language",
-        "ru": "Сменить язык",
-    },
-    "menu_choose_phil": {
-        "en": "Choose philosopher",
-        "ru": "Выбрать философа",
     },
     "problems": {
         "en": [
-            "🔄 Want to change jobs / thinking about leaving",
-            "💰 Want to earn more / unhappy with income",
-            "⚖️ Burning out / no work-life balance",
-            "👨‍👩‍👦 Difficulties in family or relationships",
-            "🧭 Don't understand where to go next",
-            "🚀 Thinking about my own project / business",
-            "📉 Lost motivation / everything feels meaningless",
-            "⏳ Can't make an important decision",
-            "😤 Overwhelmed / too much going on",
+            "🔄 Хочу сменить работу / думаю об уходе",
+            "💰 Хочу зарабатывать больше / не устраивает доход",
+            "⚖️ Выгораю / нет баланса между работой и жизнью",
+            "👨‍👩‍👦 Сложности в семье или отношениях",
+            "🧭 Не понимаю, куда двигаться дальше",
+            "🚀 Думаю о своём проекте / бизнесе",
+            "📉 Потерял мотивацию / всё стало бессмысленным",
+            "⏳ Не могу принять важное решение",
+            "😤 Перегруз / слишком много всего навалилось",
         ],
         "ru": [
             "🔄 Хочу сменить работу / думаю об уходе",
@@ -58,52 +50,20 @@ TEXTS: dict[str, dict[str, str]] = {
         "en": "Alright. Then answer honestly: what have you been avoiding the most lately?",
         "ru": "Хорошо. Тогда ответь честно: что ты больше всего избегал в последнее время?",
     },
-    "choose_philosopher": {
-        "en": "Who do you want to respond?",
-        "ru": "Кто ответит?",
-    },
-    "ask_philosophy_approach": {
-        "en": "How do you want to approach this?",
-        "ru": "Как ты хочешь на это посмотреть?",
-    },
-    "choose_philosopher_in_category": {
-        "en": "Who should speak?",
-        "ru": "Кто должен заговорить?",
-    },
-    "pick_philosopher": {
-        "en": "Pick a philosopher from the buttons below.",
-        "ru": "Выбери философа из кнопок ниже.",
-    },
-    "philosopher_chosen": {
-        "en": "You chose {name}.",
-        "ru": "Ты выбрал {name}.",
-    },
     "reminder": {
-        "en": "We stopped at the most important part. Do you want to continue?",
+        "en": "Мы остановились на самом важном. Хочешь продолжить?",
         "ru": "Мы остановились на самом важном. Хочешь продолжить?",
     },
-    "choose_language": {
-        "en": "Choose your language",
-        "ru": "Выбери язык",
-    },
-    "language_set": {
-        "en": "Language set to English.",
-        "ru": "Язык изменён на русский.",
-    },
     "reset": {
-        "en": "Let's start over. What is bothering you right now?",
-        "ru": "Начнем сначала. Что тебя сейчас мучает?",
+        "en": "Начнём сначала. Что тебя тревожит сейчас?",
+        "ru": "Начнём сначала. Что тебя тревожит сейчас?",
     },
     "clear_history": {
-        "en": "History cleared. Let's start fresh.\n\nWhat is bothering you right now?",
-        "ru": "История очищена. Начнем заново.\n\nЧто тебя сейчас беспокоит?",
-    },
-    "change_philosopher": {
-        "en": "Who do you want to respond now?",
-        "ru": "Кто теперь ответит?",
+        "en": "История очищена.\n\nЧто тебя тревожит сейчас?",
+        "ru": "История очищена.\n\nЧто тебя тревожит сейчас?",
     },
     "no_problem_yet": {
-        "en": "Send /start first to describe your problem.",
+        "en": "Сначала отправь /start, чтобы описать проблему.",
         "ru": "Сначала отправь /start, чтобы описать проблему.",
     },
     "notif_ask_enable": {

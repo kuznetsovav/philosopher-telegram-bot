@@ -46,8 +46,6 @@ ADMIN_USER_ID = int(getenv("ADMIN_USER_ID", "0"))
 
 dp = Dispatcher()
 
-LANG_BUTTONS = {"Русский": "ru", "English": "en"}
-
 THINKING_DELAY = 1.5
 MAX_HISTORY = 5
 REMINDER_CHECK_INTERVAL = 3600
@@ -59,8 +57,8 @@ MIN_INTERVAL_SECONDS = 2
 
 # ── keyboards ──────────────────────────────────────────────────────────
 
-def _problem_keyboard(lang: str) -> ReplyKeyboardMarkup:
-    problems = TEXTS["problems"].get(lang, TEXTS["problems"]["en"])
+def _problem_keyboard(lang: str = "ru") -> ReplyKeyboardMarkup:
+    problems = TEXTS["problems"].get(lang, TEXTS["problems"]["ru"])
     keyboard = [[KeyboardButton(text=p)] for p in problems]
     return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True, one_time_keyboard=True)
 
@@ -71,22 +69,15 @@ def _resume_step_after_notif(state: dict) -> str:
     return "awaiting_problem"
 
 
-def _language_keyboard() -> ReplyKeyboardMarkup:
-    keyboard = [[KeyboardButton(text=label) for label in LANG_BUTTONS]]
-    return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True, one_time_keyboard=True)
-
-
-def _menu_keyboard(lang: str) -> ReplyKeyboardMarkup:
+def _menu_keyboard(lang: str = "ru") -> ReplyKeyboardMarkup:
     keyboard = [
         [KeyboardButton(text=t("menu_start_over", lang))],
-        [KeyboardButton(text=t("menu_change_lang", lang))],
     ]
     return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True, one_time_keyboard=True)
 
 
 MENU_ACTIONS = {
     "menu_start_over": "reset",
-    "menu_change_lang": "language",
 }
 
 
@@ -213,17 +204,11 @@ def get_total_users() -> int:
     return len(ANALYTICS["users"])
 
 
-def _detect_language(language_code: str | None) -> str:
-    if language_code and language_code.lower().startswith("ru"):
-        return "ru"
-    return "en"
-
-
-def _get_lang(uid: int, message: Message) -> str:
+def _get_lang(uid: int, message: Message | None = None) -> str:
     state = user_state.get(uid)
     if state:
-        return state.get("language", "en")
-    return _detect_language(message.from_user.language_code)
+        return state.get("language", "ru")
+    return "ru"
 
 
 def _new_session() -> dict:
@@ -445,7 +430,7 @@ async def _handle_conversation_turn(message: Message, state: dict, uid: int) -> 
 
 async def _check_llm_limits(message: Message, state: dict, uid: int) -> bool:
     reset_daily_usage(state)
-    lang = state.get("language", "en")
+    lang = state.get("language", "ru")
     if is_rate_limited(state):
         log.info("[user:%d] RATE_LIMIT", uid)
         await message.answer(t("rate_limit", lang))
@@ -458,7 +443,7 @@ async def _check_llm_limits(message: Message, state: dict, uid: int) -> bool:
 
 
 async def _send_typing_and_reply(message: Message, state: dict, bot: Bot) -> None:
-    lang = state.get("language", "en")
+    lang = state.get("language", "ru")
     phase = state.get("conversation_phase", "challenge")
     history = state.get("history") or []
     latest_user = _latest_user_text_from_history(history)
@@ -542,7 +527,7 @@ def _load_notif_prefs() -> None:
         if uid not in user_state:
             user_state[uid] = {
                 "step": "awaiting_problem",
-                "language": prefs.get("language", "en"),
+                "language": prefs.get("language", "ru"),
                 "session": _new_session(),
                 **_default_usage(),
             }
@@ -577,14 +562,13 @@ def _carry_usage(prev: dict | None) -> dict:
 async def command_start_handler(message: Message) -> None:
     uid = message.from_user.id
     prev = user_state.get(uid)
-    prev_lang = prev["language"] if prev else None
     if prev and prev.get("session", {}).get("active"):
         _close_session(prev, uid)
 
     ANALYTICS["users"].add(uid)
     ANALYTICS["events"]["start"] += 1
 
-    lang = prev_lang or _detect_language(message.from_user.language_code)
+    lang = "ru"
     user_state[uid] = {
         "step": "awaiting_problem",
         "language": lang,
@@ -592,7 +576,7 @@ async def command_start_handler(message: Message) -> None:
         **_carry_prefs(prev),
         **_carry_usage(prev),
     }
-    log.info("[user:%d] START (lang=%s, total_users=%d)", uid, lang, get_total_users())
+    log.info("[user:%d] START (total_users=%d)", uid, get_total_users())
     await message.answer(t("start", lang), reply_markup=_problem_keyboard(lang))
 
 
@@ -606,18 +590,11 @@ async def existentialism_command_handler(message: Message) -> None:
     await message.answer(body)
 
 
-@dp.message(Command("language"))
-async def language_command_handler(message: Message) -> None:
-    uid = message.from_user.id
-    lang = _get_lang(uid, message)
-    await message.answer(t("choose_language", lang), reply_markup=_language_keyboard())
-
-
 @dp.message(Command("reset"))
 async def reset_command_handler(message: Message) -> None:
     uid = message.from_user.id
     prev = user_state.get(uid)
-    lang = prev["language"] if prev else _detect_language(message.from_user.language_code)
+    lang = prev["language"] if prev else "ru"
     if prev and prev.get("session", {}).get("active"):
         _close_session(prev, uid)
 
@@ -762,30 +739,11 @@ async def text_handler(message: Message) -> None:
     state = user_state.get(uid)
     text = message.text.strip()
 
-    # ── language selection (ReplyKeyboard) ──
-    if text in LANG_BUTTONS:
-        lang = LANG_BUTTONS[text]
-        if state:
-            state["language"] = lang
-        else:
-            user_state[uid] = {
-                "step": "awaiting_problem",
-                "language": lang,
-                "session": _new_session(),
-                **_default_usage(),
-            }
-        log.info("[user:%d] language changed to %s", uid, lang)
-        await message.answer(t("language_set", lang), reply_markup=ReplyKeyboardRemove())
-        return
-
     # ── menu button shortcuts ──
     lang = _get_lang(uid, message)
     action = _match_menu_button(text, lang)
     if action == "reset":
         await reset_command_handler(message)
-        return
-    if action == "language":
-        await language_command_handler(message)
         return
 
     # ── notification buttons & input ──
@@ -908,8 +866,8 @@ async def text_handler(message: Message) -> None:
 
     # ── awaiting problem ──
     if not state or state["step"] == "awaiting_problem":
-        lang = state["language"] if state else _detect_language(message.from_user.language_code)
-        predefined = TEXTS["problems"].get(lang, TEXTS["problems"]["en"])
+        lang = state["language"] if state else "ru"
+        predefined = TEXTS["problems"].get(lang, TEXTS["problems"]["ru"])
 
         if text in predefined:
             ANALYTICS["events"]["selected_option"] += 1
@@ -964,7 +922,7 @@ async def _reminder_loop(bot: Bot) -> None:
                 continue
             if now - last_reply >= INACTIVE_THRESHOLD:
                 try:
-                    lang = state.get("language", "en")
+                    lang = state.get("language", "ru")
                     await bot.send_message(uid, t("reminder", lang))
                     session["reminder_sent"] = True
                     log.info("Reminder sent to user %d", uid)
@@ -1012,7 +970,7 @@ def should_send_notification(state: dict, now_utc: datetime) -> bool:
 
 
 def get_notification_text(state: dict) -> str:
-    return t("notif_daily", state.get("language", "en"))
+    return t("notif_daily", state.get("language", "ru"))
 
 
 async def _notification_loop(bot: Bot) -> None:
@@ -1042,26 +1000,15 @@ async def _notification_loop(bot: Bot) -> None:
 # ── bot commands menu ──────────────────────────────────────────────────
 
 async def set_commands(bot: Bot) -> None:
-    en_commands = [
-        BotCommand(command="start", description="Start conversation"),
-        BotCommand(command="language", description="Change language"),
-        BotCommand(command="reset", description="Start over"),
-        BotCommand(command="clear", description="Clear conversation history"),
-        BotCommand(command="existentialism", description="Full existentialism text (RU)"),
-        BotCommand(command="notifications", description="Daily notifications"),
-        BotCommand(command="stats", description="Analytics (admin)"),
-    ]
-    ru_commands = [
+    commands = [
         BotCommand(command="start", description="Начать диалог"),
-        BotCommand(command="language", description="Сменить язык"),
         BotCommand(command="reset", description="Начать заново"),
-        BotCommand(command="clear", description="Очистить историю диалога"),
-        BotCommand(command="existentialism", description="Полный текст об экзистенциализме"),
-        BotCommand(command="notifications", description="Ежедневные уведомления"),
+        BotCommand(command="clear", description="Очистить историю"),
+        BotCommand(command="existentialism", description="Текст об экзистенциализме"),
+        BotCommand(command="notifications", description="Уведомления"),
         BotCommand(command="stats", description="Аналитика (админ)"),
     ]
-    await bot.set_my_commands(en_commands, scope=BotCommandScopeDefault())
-    await bot.set_my_commands(ru_commands, language_code="ru")
+    await bot.set_my_commands(commands, scope=BotCommandScopeDefault())
 
 
 # ── entry point ────────────────────────────────────────────────────────
